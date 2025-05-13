@@ -1,0 +1,28 @@
+{
+  "name": "More Operators",
+  "description": "Add more operators to scratch",
+  "credits": [
+    {
+      "name": "Dylan Dang"
+    }
+  ],
+  "userscripts": [
+    {
+      "url": "userscript.js",
+      "matches": [
+        "projects"
+      ]
+    }
+  ],
+  "versionAdded": "1.43.0",
+  "tags": [
+    "editor",
+    "beta"
+  ],
+  "enabledByDefault": false,
+  "dynamicEnable": true,
+  "dynamicDisable": true,
+  "libraries": [
+    "scratch-gui"
+  ]
+}
