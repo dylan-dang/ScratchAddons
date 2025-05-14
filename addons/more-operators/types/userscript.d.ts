@@ -8,6 +8,7 @@ declare namespace Userscript {
   type __Trap = import("../../../addon-api/content-script/Trap").default;
   type __Tab = import("../../../addon-api/content-script/Tab").default;
   type __Addon = import("../../../addon-api/content-script/Addon").default;
+  type createEditorModal = typeof import("../../../addon-api/content-script/modal").createEditorModal;
 
   export interface Traps extends __Trap {
     getBlockly(): Promise<ScratchBlocks.Blockly>;
@@ -15,11 +16,15 @@ declare namespace Userscript {
     vm: ScratchVM.VM;
   }
 
-  export interface Tab extends __Tab {
+  export interface Tab extends Omit<__Tab, "createModal"> {
     traps: Traps;
+    createModal(
+      title: string,
+      opts?: { isOpen?: boolean; useEditorClasses?: boolean; useSizesClass?: boolean }
+    ): ReturnType<createEditorModal>;
   }
 
-  export interface Addon extends __Addon {
+  export interface Addon extends Omit<__Addon, "tab"> {
     tab: Tab;
   }
 
@@ -33,3 +38,5 @@ declare namespace Userscript {
     console: Console;
   }
 }
+
+declare const __addon: Userscript.Addon;

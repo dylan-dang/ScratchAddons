@@ -4,12 +4,26 @@
 // Project: https://github.com/LLK/scratch-blocks
 
 declare namespace ScratchBlocks {
-  export type Block = import("blockly/core").Block;
-  export type BlockSvg = import("blockly/core").BlockSvg;
+  export type Block = import("blockly/core").Block & Record<string, any>;
+  export type Xml = typeof import("blockly/core").Xml & {
+    textToDom: (text: string) => Node;
+  };
+  export type BlockSvg = import("blockly/core").BlockSvg & Record<string, any>;
   export type Workspace = import("blockly/core").Workspace;
   type WorkspaceSvg_ = import("blockly/core").WorkspaceSvg;
   export type Field = import("blockly/core").Field;
-  export type Input = import("blockly/core").Input;
+  export type Connection = Omit<import("blockly/core").Connection, "targetBlock"> & {
+    setOffsetInBlock: (x: number, y: number) => void;
+    targetBlock: () => BlockSvg;
+    CAN_CONNECT: number;
+    prototype: {
+      canConnectWithReason_(target: Connection): number;
+    };
+  };
+  export type Input = Omit<import("blockly/core").Input, "connection"> & {
+    connection: Connection;
+    renderWidth: number;
+  };
   export type Flyout = import("blockly/core").Flyout;
 
   export namespace Toolbox {
@@ -736,10 +750,8 @@ declare namespace ScratchBlocks {
   }
 
   interface BlockDefinition {
-    init?(this: Block): void;
-    removeFieldCallback?(this: Block, field: Field): void;
-    mutationToDom?(this: Block): Element;
-    domToMutation?(this: Block, xmlElement: Element): void;
+    [key: string]: (this: BlockSvg, ...args: any[]) => any;
+    init(this: BlockSvg): void;
   }
 
   interface MenuOption {
@@ -865,7 +877,7 @@ declare namespace ScratchBlocks {
     Field: Field;
     ScratchBlocks: {
       VerticalExtensions: VerticalExtensions;
-      ProceduresUtils: ProceduresUtils;
+      ProcedureUtils: ProceduresUtils;
     };
     Categories: {
       control: "control";
@@ -880,6 +892,14 @@ declare namespace ScratchBlocks {
       sensing: "sensing";
       sound: "sounds";
     };
+    BlockSvg: BlockSvg;
+    Input: Input;
+    NEXT_STATEMENT: number;
+    PROCEDURES_DEFINITION_BLOCK_TYPE: string;
+    INPUT_VALUE: number;
+    OUTPUT_SHAPE_ROUND: number;
+    Xml: Xml;
+    Connection: Connection;
   }
 
   interface BlocklyGlobal {
