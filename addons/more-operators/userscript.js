@@ -444,21 +444,26 @@ export default async function ({ addon, console }) {
           block.setAttribute("type", "function_call");
           block.setAttribute("gap", "16");
           block.appendChild(mutation);
+          console.log(mutation);
           return block;
         });
 
       return [
         xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
-        xml`<block type="function_return">
-          <value name="return_value">
-            <shadow type="text">
-              <field name="TEXT" />
-            </shadow>
-          </value>
-        </block>`,
-        xml`<sep gap="36" />`,
-        ...calls,
-      ];
+        calls,
+        calls.length > 0
+          ? [
+              xml`<sep gap="36" />`,
+              xml`<block type="function_return">
+                    <value name="return_value">
+                      <shadow type="text">
+                        <field name="TEXT" />
+                      </shadow>
+                    </value>
+                  </block>`,
+            ]
+          : [],
+      ].flat();
     });
   }
 
@@ -491,7 +496,6 @@ export default async function ({ addon, console }) {
     Blockly.BlockDragger.prototype.endBlockDrag = function () {
       oldEndBlockDrag.apply(this, arguments);
       if (!(this.wouldDeleteBlock_ && this.draggingBlock_.type === "function_definition")) return;
-      console.log("bruh");
       /** @type {ScratchBlocks.Workspace} */
       const workspace = this.workspace_;
       setTimeout(() => {
