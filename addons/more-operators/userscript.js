@@ -260,9 +260,7 @@ export default async function ({ addon, console }) {
       return result;
     };
 
-    const modal = addon.tab.createModal("Make a Function", {
-      useEditorClasses: true,
-    });
+    const modal = addon.tab.createModal("Make a Function", { useEditorClasses: true });
     modal.container.style.width = "700px";
     // we don't have to worry about sanitizing the html since we control the content so XSS is not an issue
     modal.content.innerHTML = /* html */ `
@@ -296,7 +294,7 @@ export default async function ({ addon, console }) {
         </div>
         <div class="${addon.tab.scratchClass("custom-procedures_checkbox-row")}">
           <label>
-            <input type="checkbox" />
+            <input id="sa-function-warp-checkbox" type="checkbox" />
             <span>Run without screen refresh</span>
           </label>
         </div>
@@ -320,8 +318,11 @@ export default async function ({ addon, console }) {
         const numberOrTextInput = modal.content.querySelector("#sa-function-number-or-text-input");
         const booleanInput = modal.content.querySelector("#sa-function-boolean-input");
         const labelInput = modal.content.querySelector("#sa-function-label-input");
+
         const cancelButton = modal.content.querySelector("#sa-function-cancel-button");
         const okButton = modal.content.querySelector("#sa-function-ok-button");
+        /** @type {HTMLInputElement} */
+        const warpCheckbox = modal.content.querySelector("#sa-function-warp-checkbox");
 
         const oldDefaultToolbox = Blockly.Blocks.defaultToolbox;
         Blockly.Blocks.defaultToolbox = null;
@@ -334,7 +335,6 @@ export default async function ({ addon, console }) {
           comments: false,
           collapse: false,
           scrollbars: true,
-          isRtl: false,
           media: "/static/blocks-media/default/",
         });
         Blockly.Blocks.defaultToolbox = oldDefaultToolbox;
@@ -367,48 +367,64 @@ export default async function ({ addon, console }) {
           mutationRoot.addLabelExternal();
         }
 
-        function handleCancel() {
+        function handleOk() {
+          const workspace = addon.tab.traps.getWorkspace();
+          const blockDom = xml`<block type="function_definition">
+            <value name="custom_reporter">
+              <shadow type="function_prototype">
+                ${Blockly.Xml.domToText(mutationRoot.mutationToDom(true))}
+              </shadow>
+            </value>
+          </block>`;
+          if (!(blockDom instanceof Element)) throw new Error("this should not happen");
+          Blockly.Events.setGroup(true);
+          const block = Blockly.Xml.domToBlock(blockDom, workspace);
+          const scale = workspace.scale;
+          const posX = 30 - workspace.scrollX;
+          const posY = 30 - workspace.scrollY;
+          block.moveBy(posX / scale, posY / scale);
+          block.scheduleSnapAndBump();
+          Blockly.Events.setGroup(false);
+          handleClose();
+        }
+
+        /**
+         * @this {HTMLInputElement}
+         */
+        function handleToggleWarp() {
+          mutationRoot.setWarp(this.checked);
+        }
+
+        function handleClose() {
+          modal.close();
+          workspace.dispose();
           numberOrTextInput.removeEventListener("click", handleAddTextNumber);
           booleanInput.removeEventListener("click", handleAddBoolean);
           labelInput.removeEventListener("click", handleAddLabel);
-          modal.close();
-          workspace.dispose();
-          modal.backdrop.removeEventListener("click", handleCancel);
-          modal.closeButton.removeEventListener("click", handleCancel);
+          modal.backdrop.removeEventListener("click", handleClose);
+          modal.closeButton.removeEventListener("click", handleClose);
+          cancelButton.removeEventListener("click", handleClose);
+          okButton.removeEventListener("click", handleOk);
+          warpCheckbox.removeEventListener("change", handleToggleWarp);
         }
 
+        warpCheckbox.checked = false;
         numberOrTextInput.addEventListener("click", handleAddTextNumber);
         booleanInput.addEventListener("click", handleAddBoolean);
         labelInput.addEventListener("click", handleAddLabel);
-
-        modal.closeButton.addEventListener("click", handleCancel);
-        modal.backdrop.addEventListener("click", handleCancel);
-        cancelButton.addEventListener("click", handleCancel);
+        modal.closeButton.addEventListener("click", handleClose);
+        modal.backdrop.addEventListener("click", handleClose);
+        cancelButton.addEventListener("click", handleClose);
+        okButton.addEventListener("click", handleOk);
+        warpCheckbox.addEventListener("change", handleToggleWarp);
 
         // mutationRoot.domToMutation();
-        mutationRoot.initSvg();
-        mutationRoot.render();
         mutationRoot.procCode_ = "function name";
         mutationRoot.updateDisplay_();
-        setTimeout(() => {
-          mutationRoot.focusLastEditor_();
-        });
+        mutationRoot.initSvg();
+        mutationRoot.render();
+        setTimeout(() => mutationRoot.focusLastEditor_());
       });
-
-      const fnBlock = xml`
-        <block type="function_definition">
-          <value name="custom_reporter">
-            <shadow type="function_prototype">
-              <mutation
-              proccode="increment %s"
-              argumentids='${["bSCBfO@rk#^qy6Hd-_;b"]}'
-              argumentdefaults='${["", "", ""]}'
-              warp="true"
-              argumentnames='${["a"]}'
-              />
-            </shadow>
-          </value>
-        </block>`;
 
       return [
         xml`<block type="function_return">
@@ -420,7 +436,6 @@ export default async function ({ addon, console }) {
         </block>`,
         xml`<sep gap="36" />`,
         xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
-        fnBlock,
       ];
     });
   }
@@ -472,14 +487,13 @@ export default async function ({ addon, console }) {
       if (this.type === "function_definition") {
         let cursorX = 0;
         let cursorY = -4;
-        let connectionX, connectionY;
         inputRows.forEach((row, y) => {
           cursorX = row.paddingStart;
-          if (y == 0) {
+          if (y === 0) {
             cursorX += this.RTL ? -iconWidth : iconWidth;
           }
 
-          if (row.type == Blockly.BlockSvg.INLINE) {
+          if (row.type === Blockly.BlockSvg.INLINE) {
             // Inline inputs.
             for (const input of row) {
               // Align fields vertically within the row.
@@ -490,17 +504,17 @@ export default async function ({ addon, console }) {
               const fieldX = Blockly.BlockSvg.getAlignedCursor_(cursorX, input, inputRows.rightEdge);
 
               cursorX = this.renderFields_(input.fieldRow, fieldX, fieldY);
-              if (input.type == Blockly.INPUT_VALUE) {
+              if (input.type === Blockly.INPUT_VALUE) {
                 // Create inline input connection.
                 // In blocks with a notch, inputs should be bumped to a min X,
                 // to avoid overlapping with the notch.
                 if (this.previousConnection) {
                   cursorX = Math.max(cursorX, Blockly.BlockSvg.INPUT_AND_FIELD_MIN_X);
                 }
-                connectionX = this.RTL ? -cursorX : cursorX;
+                const connectionX = this.RTL ? -cursorX : cursorX;
                 // Attempt to center the connection vertically.
                 const connectionYOffset = row.height / 2 - 8;
-                connectionY = cursorY + connectionYOffset;
+                const connectionY = cursorY + connectionYOffset;
                 input.connection.setOffsetInBlock(connectionX, connectionY);
                 this.renderInputShape_(input, cursorX, cursorY + connectionYOffset);
                 cursorX += input.renderWidth + Blockly.BlockSvg.SEP_SPACE_X;
@@ -528,7 +542,7 @@ export default async function ({ addon, console }) {
             if (!this.edgeShape_) {
               steps.push("v", row.height - Blockly.BlockSvg.CORNER_RADIUS * 2);
             }
-          } else if (row.type == Blockly.NEXT_STATEMENT) {
+          } else if (row.type === Blockly.NEXT_STATEMENT) {
             // Nested statement.
             const [input] = row;
             const fieldX = cursorX;
@@ -539,14 +553,14 @@ export default async function ({ addon, console }) {
             // Move to the start of the notch.
             cursorX = inputRows.statementEdge + Blockly.BlockSvg.NOTCH_WIDTH;
 
-            if (this.type == Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) {
+            if (this.type === Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) {
               this.renderDefineBlock_(steps, inputRows, input, row, cursorY);
             } else {
               Blockly.BlockSvg.drawStatementInputFromTopRight_(steps, cursorX, inputRows.rightEdge, row);
             }
 
             // Create statement connection.
-            connectionX = this.RTL ? -cursorX : cursorX;
+            const connectionX = this.RTL ? -cursorX : cursorX;
             input.connection.setOffsetInBlock(connectionX, cursorY);
             if (input.connection.isConnected()) {
               this.width = Math.max(
@@ -555,8 +569,8 @@ export default async function ({ addon, console }) {
               );
             }
             if (
-              this.type != Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE &&
-              (y == inputRows.length - 1 || inputRows[y + 1].type == Blockly.NEXT_STATEMENT)
+              this.type !== Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE &&
+              (y === inputRows.length - 1 || inputRows[y + 1].type === Blockly.NEXT_STATEMENT)
             ) {
               // If the final input is a statement stack, add a small row underneath.
               // Consecutive statement stacks are also separated by a small divider.
@@ -579,7 +593,7 @@ export default async function ({ addon, console }) {
   }
 
   function defineBlocks() {
-    Blockly.Blocks["function_return"] = {
+    Blockly.Blocks.function_return = {
       init() {
         this.jsonInit({
           message0: "return %1",
@@ -594,10 +608,10 @@ export default async function ({ addon, console }) {
       },
     };
 
-    Blockly.Blocks["function_definition"] = {
+    Blockly.Blocks.function_definition = {
       init() {
         this.jsonInit({
-          message0: "function %1",
+          message0: "define %1",
           args0: [
             {
               type: "input_value",
@@ -609,7 +623,7 @@ export default async function ({ addon, console }) {
       },
     };
 
-    Blockly.Blocks["function_prototype"] = {
+    Blockly.Blocks.function_prototype = {
       init() {
         this.jsonInit({
           // message0: "test",
@@ -645,12 +659,10 @@ export default async function ({ addon, console }) {
       updateArgumentReporterNames_: Blockly.ScratchBlocks.ProcedureUtils.updateArgumentReporterNames_,
     };
 
-    Blockly.Blocks["function_declaration"] = {
+    Blockly.Blocks.function_declaration = {
       init: function () {
         this.jsonInit({
-          // outputShape: Blockly.OUTPUT_SHAPE_ROUND,
-          // output: "String",
-          extensions: ["colours_more", "shape_statement"],
+          extensions: ["colours_more", "output_string"],
         });
         /* Data known about the procedure. */
         this.procCode_ = "";
@@ -671,7 +683,12 @@ export default async function ({ addon, console }) {
       mutationToDom: Blockly.ScratchBlocks.ProcedureUtils.definitionMutationToDom,
       domToMutation: Blockly.ScratchBlocks.ProcedureUtils.definitionDomToMutation,
       populateArgument_: Blockly.ScratchBlocks.ProcedureUtils.populateArgumentOnDeclaration_,
-      addProcedureLabel_: Blockly.ScratchBlocks.ProcedureUtils.addLabelEditor_,
+      // replaces Blockly.ScratchBlocks.ProcedureUtils.addLabelEditor_
+      addProcedureLabel_: function (text) {
+        if (text) {
+          this.appendDummyInput(Blockly.utils.genUid()).appendField(new LabelFieldTextInputRemovable(text));
+        }
+      },
 
       // Exist on declaration and arguments editors, with different implementations.
       removeFieldCallback: Blockly.ScratchBlocks.ProcedureUtils.removeFieldCallback,
@@ -686,5 +703,26 @@ export default async function ({ addon, console }) {
       addStringNumberExternal: Blockly.ScratchBlocks.ProcedureUtils.addStringNumberExternal,
       onChangeFn: Blockly.ScratchBlocks.ProcedureUtils.updateDeclarationProcCode_,
     };
+  }
+
+  /**
+   * Fix for removable editable label fields on declarations that are not statement-shaped
+   */
+  class LabelFieldTextInputRemovable extends Blockly.FieldTextInputRemovable {
+    /**
+     * Enforce square shape instead of this.sourceBlock_.getOutputShape
+     */
+    getBorderRadius() {
+      return Blockly.BlockSvg.TEXT_FIELD_CORNER_RADIUS;
+    }
+
+    /**
+     * Fixes bug where a lonely label's click target is directed the parent svg element
+     */
+    getClickTarget_() {
+      const target = super.getClickTarget_();
+      if (target.classList.contains("blocklyEditableText")) return target;
+      return Array.from(target.children).find((child) => child.classList.contains("blocklyEditableText")) ?? target;
+    }
   }
 }

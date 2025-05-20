@@ -4,6 +4,7 @@
 // Project: https://github.com/LLK/scratch-blocks
 
 declare namespace ScratchBlocks {
+  export type BlocklyOptions = import("blockly/core").BlocklyOptions;
   export type Block = import("blockly/core").Block & Record<string, any>;
   export type Xml = typeof import("blockly/core").Xml & {
     textToDom: (text: string) => Node;
@@ -110,6 +111,7 @@ declare namespace ScratchBlocks {
 
   export interface WorkspaceSvg extends WorkspaceSvg_ {
     getToolbox(): Toolbox.Toolbox;
+    newBlock(prototypeName: string, opt_id?: string): BlockSvg;
   }
 
   const enum VariableType {
@@ -900,6 +902,9 @@ declare namespace ScratchBlocks {
     OUTPUT_SHAPE_ROUND: number;
     Xml: Xml;
     Connection: Connection;
+    inject(container: Element | string, options: BlocklyOptions): WorkspaceSvg;
+    FieldTextInputRemovable: new (...args: any[]) => Field;
+    [key: string]: any;
   }
 
   interface BlocklyGlobal {
