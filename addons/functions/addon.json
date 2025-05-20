@@ -1,6 +1,6 @@
 {
-  "name": "More Operators",
-  "description": "Add more operators to scratch",
+  "name": "Functions",
+  "description": "Add custom reporters to scratch",
   "credits": [
     {
       "name": "Dylan Dang"
