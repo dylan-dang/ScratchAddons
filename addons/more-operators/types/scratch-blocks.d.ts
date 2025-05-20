@@ -4,6 +4,7 @@
 // Project: https://github.com/LLK/scratch-blocks
 
 declare namespace ScratchBlocks {
+  export type Bruh = import("blockly/core").Block;
   export type BlocklyOptions = import("blockly/core").BlocklyOptions;
   export type Block = import("blockly/core").Block & Record<string, any>;
   export type Xml = typeof import("blockly/core").Xml & {

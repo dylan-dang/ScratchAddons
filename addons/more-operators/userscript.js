@@ -192,6 +192,7 @@ export default async function ({ addon, console }) {
   patchConnection();
   defineBlocks();
   patchBlockSvg();
+  patchBlockDragger();
 
   /**
    * convert template strings to dom
@@ -378,6 +379,7 @@ export default async function ({ addon, console }) {
           </block>`;
           if (!(blockDom instanceof Element)) throw new Error("this should not happen");
           Blockly.Events.setGroup(true);
+          /** @type {ScratchBlocks.Block} */
           const block = Blockly.Xml.domToBlock(blockDom, workspace);
           const scale = workspace.scale;
           const posX = 30 - workspace.scrollX;
@@ -385,6 +387,9 @@ export default async function ({ addon, console }) {
           block.moveBy(posX / scale, posY / scale);
           block.scheduleSnapAndBump();
           Blockly.Events.setGroup(false);
+          // TODO update when '_' is removed;
+          // @ts-ignore
+          workspace.refreshToolboxSelection_();
           handleClose();
         }
 
@@ -426,7 +431,24 @@ export default async function ({ addon, console }) {
         setTimeout(() => mutationRoot.focusLastEditor_());
       });
 
+      const calls = workspace
+        .getAllBlocks()
+        .filter((block) => block.type === "function_prototype")
+        .map((block) => block.mutationToDom(/* opt_generateShadows */ true))
+        .filter(Boolean)
+        .sort((a, b) =>
+          Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
+        )
+        .map((mutation) => {
+          const block = document.createElementNS(null, "block");
+          block.setAttribute("type", "function_call");
+          block.setAttribute("gap", "16");
+          block.appendChild(mutation);
+          return block;
+        });
+
       return [
+        xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
         xml`<block type="function_return">
           <value name="return_value">
             <shadow type="text">
@@ -435,22 +457,68 @@ export default async function ({ addon, console }) {
           </value>
         </block>`,
         xml`<sep gap="36" />`,
-        xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
+        ...calls,
       ];
     });
   }
 
   function patchConnection() {
     const originalCanConnectWithReason_ = Blockly.Connection.prototype.canConnectWithReason_;
-    /**
-     * @param {ScratchBlocks.Connection} target
-     * @returns {number}
-     */
     Blockly.Connection.prototype.canConnectWithReason_ = function (target) {
-      // if (target.type === "function_prototype") {
-      //   return Blockly.Connection.CAN_CONNECT;
-      // }
-      return originalCanConnectWithReason_.call(this, target);
+      const reason = originalCanConnectWithReason_.call(this, target);
+      if (reason !== Blockly.Connection.CAN_CONNECT) return reason;
+
+      const superior = this.isSuperior();
+      const blockA = superior ? this.sourceBlock_ : target.getSourceBlock();
+      const blockB = superior ? target.getSourceBlock() : this.sourceBlock_;
+      const superiorConn = superior ? this : target;
+
+      if (
+        (blockA.type === "function_definition" &&
+          blockB.type !== "function_prototype" &&
+          superiorConn === blockA.getInput("custom_reporter").connection) ||
+        (blockB.type === "function_prototype" && blockA.type !== "function_definition")
+      ) {
+        return Blockly.Connection.REASON_CUSTOM_PROCEDURE;
+      }
+
+      return Blockly.Connection.CAN_CONNECT;
+    };
+  }
+
+  function patchBlockDragger() {
+    const oldEndBlockDrag = Blockly.BlockDragger.prototype.endBlockDrag;
+    Blockly.BlockDragger.prototype.endBlockDrag = function () {
+      oldEndBlockDrag.apply(this, arguments);
+      if (!(this.wouldDeleteBlock_ && this.draggingBlock_.type === "function_definition")) return;
+      console.log("bruh");
+      /** @type {ScratchBlocks.Workspace} */
+      const workspace = this.workspace_;
+      setTimeout(() => {
+        for (const block of workspace.getAllBlocks()) {
+          if (block.type === "function_call") {
+            const procCode = block.getProcCode();
+            workspace.getTopBlocks(false);
+
+            const definition = workspace
+              .getTopBlocks(false)
+              .find(
+                (block) =>
+                  block.type === "function_definition" &&
+                  block.getInput("custom_reporter").connection.targetBlock().getProcCode?.() === procCode
+              );
+
+            // Check for call blocks with no associated define block.
+            if (!definition) {
+              alert(Blockly.Msg.PROCEDURE_USED.replaceAll("block", "function"));
+              workspace.undo(false);
+              return;
+            }
+          }
+        }
+        // The proc deletion was valid, update the toolbox.
+        workspace.refreshToolboxSelection_();
+      });
     };
   }
 
@@ -684,10 +752,9 @@ export default async function ({ addon, console }) {
       domToMutation: Blockly.ScratchBlocks.ProcedureUtils.definitionDomToMutation,
       populateArgument_: Blockly.ScratchBlocks.ProcedureUtils.populateArgumentOnDeclaration_,
       // replaces Blockly.ScratchBlocks.ProcedureUtils.addLabelEditor_
-      addProcedureLabel_: function (text) {
-        if (text) {
-          this.appendDummyInput(Blockly.utils.genUid()).appendField(new LabelFieldTextInputRemovable(text));
-        }
+      addProcedureLabel_(text) {
+        if (!text) return;
+        this.appendDummyInput(Blockly.utils.genUid()).appendField(new LabelFieldTextInputRemovable(text));
       },
 
       // Exist on declaration and arguments editors, with different implementations.
@@ -702,6 +769,34 @@ export default async function ({ addon, console }) {
       addBooleanExternal: Blockly.ScratchBlocks.ProcedureUtils.addBooleanExternal,
       addStringNumberExternal: Blockly.ScratchBlocks.ProcedureUtils.addStringNumberExternal,
       onChangeFn: Blockly.ScratchBlocks.ProcedureUtils.updateDeclarationProcCode_,
+    };
+
+    Blockly.Blocks.function_call = {
+      init: function () {
+        this.jsonInit({
+          extensions: ["colours_more", "output_string", "procedure_call_contextmenu"],
+        });
+        this.procCode_ = "";
+        this.argumentIds_ = [];
+        this.warp_ = false;
+      },
+      // Shared.
+      getProcCode: Blockly.ScratchBlocks.ProcedureUtils.getProcCode,
+      removeAllInputs_: Blockly.ScratchBlocks.ProcedureUtils.removeAllInputs_,
+      disconnectOldBlocks_: Blockly.ScratchBlocks.ProcedureUtils.disconnectOldBlocks_,
+      deleteShadows_: Blockly.ScratchBlocks.ProcedureUtils.deleteShadows_,
+      createAllInputs_: Blockly.ScratchBlocks.ProcedureUtils.createAllInputs_,
+      updateDisplay_: Blockly.ScratchBlocks.ProcedureUtils.updateDisplay_,
+
+      // Exist on all three blocks, but have different implementations.
+      mutationToDom: Blockly.ScratchBlocks.ProcedureUtils.callerMutationToDom,
+      domToMutation: Blockly.ScratchBlocks.ProcedureUtils.callerDomToMutation,
+      populateArgument_: Blockly.ScratchBlocks.ProcedureUtils.populateArgumentOnCaller_,
+      addProcedureLabel_: Blockly.ScratchBlocks.ProcedureUtils.addLabelField_,
+
+      // Only exists on the external caller.
+      attachShadow_: Blockly.ScratchBlocks.ProcedureUtils.attachShadow_,
+      buildShadowDom_: Blockly.ScratchBlocks.ProcedureUtils.buildShadowDom_,
     };
   }
 
