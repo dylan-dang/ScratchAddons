@@ -2,7 +2,7 @@ declare namespace Serialized {
   // Serialized primitive input types
   export type InputSameShadowPrimitive = [1, string | null | Primitive];
   export type InputNoShadowPrimitive = [2, string | null];
-  export type InputDifferentShadowPrimitive = [3, string | null, string | null];
+  export type InputDifferentShadowPrimitive = [3, string | null, string | null | Primitive];
   export type MathNumberPrimitive = [4, string];
   export type PositiveNumberPrimitive = [5, string];
   export type WholeNumberPrimitive = [6, string];
@@ -63,10 +63,10 @@ declare namespace Serialized {
     y?: number;
 
     /** Additional mutation data, if applicable. */
-    mutation?: Record<string, any>;
-
-    /** The ID of an associated comment, if present. */
-    __patch?: string;
+    mutation?: {
+      tagName: "mutation";
+      [key: string]: any;
+    };
   }
 
   // Either a block or a primitive

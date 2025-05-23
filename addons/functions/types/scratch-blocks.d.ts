@@ -905,6 +905,7 @@ declare namespace ScratchBlocks {
     Connection: Connection;
     inject(container: Element | string, options: BlocklyOptions): WorkspaceSvg;
     FieldTextInputRemovable: new (...args: any[]) => Field;
+    Block: new (workspace: Workspace, prototypeName?: string, opt_id?: string) => Block;
     [key: string]: any;
   }
 

@@ -20,8 +20,6 @@
     "beta"
   ],
   "enabledByDefault": false,
-  "dynamicEnable": true,
-  "dynamicDisable": true,
   "libraries": [
     "scratch-gui"
   ]
