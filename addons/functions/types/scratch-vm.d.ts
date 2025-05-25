@@ -159,7 +159,6 @@ declare namespace ScratchVM {
     inputs: Record<string, Input | undefined>;
     fields: Record<string, Field>;
     mutation: null | ProcedureCallMutation | ProcedurePrototypeMutation;
-    __patch: string; // we set this ourselves
   }
 
   interface Blocks {
@@ -170,6 +169,12 @@ declare namespace ScratchVM {
     getBlock(id: string): Block | undefined;
 
     getOpcode(id: string): string | null;
+
+    getScripts(): string[];
+
+    getNextBlock(id: string): string;
+
+    deleteBlock(id: string): void;
 
     getFields(id: string): object | null;
 
@@ -432,8 +437,6 @@ declare namespace ScratchVM {
     isOriginal: boolean;
 
     isStage: boolean;
-
-    __patched?: boolean;
 
     /**
      * Returns true if the target is not the stage and is not a clone.
