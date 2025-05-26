@@ -1,11 +1,19 @@
 /// <reference path="types/sb3.d.ts" />
 /// <reference path="types/userscript.d.ts" />
 
-const sig = {
-  fn: "__function ",
-  atomic: "__atomic ",
-  stack: "__stack__",
-  inline: "__inline",
+const Signature = {
+  FUNCTION: "__function ",
+  ATOMIC: "__atomic ",
+  STACK: "__stack__",
+  INLINE: "__inline",
+};
+
+const FunctionBlockType = {
+  DEFINITION: "function_definition",
+  PROTOTYPE: "function_prototype",
+  CALL: "function_call",
+  DECLARATION: "function_declaration",
+  RETURN: "function_return",
 };
 
 /** @param {Userscript.Utilities} utils */
@@ -21,13 +29,14 @@ export default async function ({ addon, console }) {
   patchBlockDragger();
   patchSerialization();
   patchDeserialization();
+  patchVM();
 
   function patchCategory() {
     /**
      * convert template strings to dom
      * @param {TemplateStringsArray} strings
      * @param {...any} values
-     * @returns {Node}\
+     * @returns {Node}
      */
     function xml(strings, ...values) {
       const interpolated = strings
@@ -159,7 +168,7 @@ export default async function ({ addon, console }) {
           media: "/static/blocks-media/default/",
         });
         Blockly.Blocks.defaultToolbox = oldDefaultToolbox;
-        const mutationRoot = workspace.newBlock("function_declaration");
+        const mutationRoot = workspace.newBlock(FunctionBlockType.DECLARATION);
         mutationRoot.setMovable(false);
         mutationRoot.setDeletable(false);
         mutationRoot.contextMenu = false;
@@ -190,9 +199,9 @@ export default async function ({ addon, console }) {
 
         function handleOk() {
           const workspace = addon.tab.traps.getWorkspace();
-          const blockDom = xml`<block type="function_definition">
+          const blockDom = xml`<block type="${FunctionBlockType.DEFINITION}" gap="16">
             <value name="custom_block">
-              <shadow type="function_prototype">
+              <shadow type="${FunctionBlockType.PROTOTYPE}">
                 ${Blockly.Xml.domToText(mutationRoot.mutationToDom(true))}
               </shadow>
             </value>
@@ -244,7 +253,7 @@ export default async function ({ addon, console }) {
 
       const calls = workspace
         .getAllBlocks()
-        .filter((block) => block.type === "function_prototype")
+        .filter((block) => block.type === FunctionBlockType.PROTOTYPE)
         .map((block) => block.mutationToDom(/* opt_generateShadows */ true))
         .filter(Boolean)
         .sort((a, b) =>
@@ -252,7 +261,7 @@ export default async function ({ addon, console }) {
         )
         .map((mutation) => {
           const block = document.createElementNS(null, "block");
-          block.setAttribute("type", "function_call");
+          block.setAttribute("type", FunctionBlockType.CALL);
           block.setAttribute("gap", "16");
           block.appendChild(mutation);
           return block;
@@ -264,7 +273,7 @@ export default async function ({ addon, console }) {
         calls.length > 0
           ? [
               xml`<sep gap="36" />`,
-              xml`<block type="function_return">
+              xml`<block type="${FunctionBlockType.RETURN}">
                     <value name="ITEM">
                       <shadow type="text">
                         <field name="TEXT" />
@@ -293,10 +302,10 @@ export default async function ({ addon, console }) {
       const superiorConn = superior ? this : target;
 
       if (
-        (blockA.type === "function_definition" &&
-          blockB.type !== "function_prototype" &&
+        (blockA.type === FunctionBlockType.DEFINITION &&
+          blockB.type !== FunctionBlockType.PROTOTYPE &&
           superiorConn === blockA.getInput("custom_block").connection) ||
-        (blockB.type === "function_prototype" && blockA.type !== "function_definition")
+        (blockB.type === FunctionBlockType.PROTOTYPE && blockA.type !== FunctionBlockType.DEFINITION)
       ) {
         // @ts-ignore
         return Blockly.Connection.REASON_CUSTOM_PROCEDURE;
@@ -310,19 +319,19 @@ export default async function ({ addon, console }) {
     const oldEndBlockDrag = Blockly.BlockDragger.prototype.endBlockDrag;
     Blockly.BlockDragger.prototype.endBlockDrag = function (/** @type {any} */ ...args) {
       oldEndBlockDrag.apply(this, args);
-      if (!(this.wouldDeleteBlock_ && this.draggingBlock_.type === "function_definition")) return;
+      if (!(this.wouldDeleteBlock_ && this.draggingBlock_.type === FunctionBlockType.DEFINITION)) return;
       /** @type {ScratchBlocks.Workspace} */
       const workspace = this.workspace_;
       setTimeout(() => {
         for (const block of workspace.getAllBlocks()) {
-          if (block.type === "function_call") {
+          if (block.type === FunctionBlockType.CALL) {
             // @ts-ignore
             const procCode = block.getProcCode();
             workspace.getTopBlocks(false);
 
             const definition = workspace.getTopBlocks(false).find(
               (block) =>
-                block.type === "function_definition" &&
+                block.type === FunctionBlockType.DEFINITION &&
                 // @ts-ignore
                 block.getInput("custom_block").connection.targetBlock().getProcCode?.() === procCode
             );
@@ -351,7 +360,7 @@ export default async function ({ addon, console }) {
      * @private
      */
     Blockly.BlockSvg.prototype.renderDrawTop_ = function (steps, rightEdge) {
-      if (this.type === "function_definition") {
+      if (this.type === FunctionBlockType.DEFINITION) {
         steps.push("m 0, 0");
         steps.push(Blockly.BlockSvg.TOP_LEFT_CORNER_DEFINE_HAT);
         this.width = rightEdge;
@@ -372,7 +381,7 @@ export default async function ({ addon, console }) {
      */
     Blockly.BlockSvg.prototype.renderDrawRight_ = function (steps, inputRows, iconWidth) {
       // almost an exact copy of original renderDrawRight_ except for fieldY and connectionY subtraction 12 and radius change
-      if (this.type === "function_definition") {
+      if (this.type === FunctionBlockType.DEFINITION) {
         let cursorX = 0;
         let cursorY = -4;
         inputRows.forEach((row, y) => {
@@ -481,7 +490,7 @@ export default async function ({ addon, console }) {
   }
 
   function defineBlocks() {
-    Blockly.Blocks.function_return = {
+    Blockly.Blocks[FunctionBlockType.RETURN] = {
       init() {
         this.jsonInit({
           message0: "return %1",
@@ -496,7 +505,7 @@ export default async function ({ addon, console }) {
       },
     };
 
-    Blockly.Blocks.function_definition = {
+    Blockly.Blocks[FunctionBlockType.DEFINITION] = {
       init() {
         this.jsonInit({
           message0: "define %1",
@@ -511,7 +520,7 @@ export default async function ({ addon, console }) {
       },
     };
 
-    Blockly.Blocks.function_prototype = {
+    Blockly.Blocks[FunctionBlockType.PROTOTYPE] = {
       init() {
         this.jsonInit({
           // message0: "test",
@@ -568,7 +577,7 @@ export default async function ({ addon, console }) {
       }
     }
 
-    Blockly.Blocks.function_declaration = {
+    Blockly.Blocks[FunctionBlockType.DECLARATION] = {
       init: function () {
         this.jsonInit({
           extensions: ["colours_more", "output_string"],
@@ -612,7 +621,7 @@ export default async function ({ addon, console }) {
       onChangeFn: Blockly.ScratchBlocks.ProcedureUtils.updateDeclarationProcCode_,
     };
 
-    Blockly.Blocks.function_call = {
+    Blockly.Blocks[FunctionBlockType.CALL] = {
       init: function () {
         this.jsonInit({
           extensions: ["colours_more", "output_string", "procedure_call_contextmenu"],
@@ -732,15 +741,15 @@ export default async function ({ addon, console }) {
           if (!block.opcode.startsWith("function")) continue;
 
           // define stack list if any function block is detected
-          target.lists[sig.stack] = [sig.stack, []];
+          target.lists[Signature.STACK] = [Signature.STACK, []];
 
-          if (block.opcode === "function_prototype") {
+          if (block.opcode === FunctionBlockType.PROTOTYPE) {
             block.opcode = "procedures_prototype";
-            block.mutation.proccode = sig.fn + block.mutation.proccode;
+            block.mutation.proccode = Signature.FUNCTION + block.mutation.proccode;
             continue;
           }
 
-          if (block.opcode === "function_definition") {
+          if (block.opcode === FunctionBlockType.DEFINITION) {
             block.opcode = "procedures_definition";
 
             /**
@@ -750,7 +759,7 @@ export default async function ({ addon, console }) {
               if (!block) return;
 
               if (block.opcode === "control_stop" && block.fields.STOP_OPTION[0] === "this script") {
-                block.opcode = "function_return";
+                block.opcode = FunctionBlockType.RETURN;
                 block.mutation = undefined;
                 block.inputs = { ITEM: [1, [10, ""]] };
                 block.fields = {};
@@ -780,7 +789,7 @@ export default async function ({ addon, console }) {
             if (
               lastBlock.opcode === "control_delete_this_clone" ||
               lastBlock.opcode === "control_forever" ||
-              lastBlock.opcode === "function_return" ||
+              lastBlock.opcode === FunctionBlockType.RETURN ||
               lastBlock.mutation?.hasnext === "false"
             )
               continue;
@@ -796,7 +805,7 @@ export default async function ({ addon, console }) {
                 INDEX: [1, [7, "1"]],
               },
               fields: {
-                LIST: [sig.stack, sig.stack],
+                LIST: [Signature.STACK, Signature.STACK],
               },
               shadow: false,
               topLevel: false,
@@ -809,10 +818,10 @@ export default async function ({ addon, console }) {
         // handle function returns
         for (const [id, block] of Object.entries(target.blocks)) {
           if (Array.isArray(block)) continue; // primitive
-          if (block.opcode !== "function_return") continue;
+          if (block.opcode !== FunctionBlockType.RETURN) continue;
           block.opcode = "data_insertatlist";
           block.inputs.INDEX = [1, [7, "1"]];
-          block.fields.LIST = [sig.stack, sig.stack];
+          block.fields.LIST = [Signature.STACK, Signature.STACK];
           block.next = Blockly.utils.genUid();
           target.blocks[block.next] = {
             opcode: "control_stop",
@@ -835,7 +844,7 @@ export default async function ({ addon, console }) {
         // handle calls after transpiling returns
         for (const [id, block] of Object.entries(target.blocks)) {
           if (Array.isArray(block)) continue; // primitive
-          if (block.opcode !== "function_call") continue;
+          if (block.opcode !== FunctionBlockType.CALL) continue;
 
           const reporterExtensions = new Set(["output_boolean", "output_number", "output_string"]);
           /** @param {BlockJson} json */
@@ -870,13 +879,13 @@ export default async function ({ addon, console }) {
            * @returns {Serialized.Block[]}
            */
           function getAndReplaceCalls(block, ctx = { counter: 1 }) {
-            if (block.opcode === "function_call") {
+            if (block.opcode === FunctionBlockType.CALL) {
               const copy = { ...block };
               copy.comment = undefined;
               block.opcode = "data_itemoflist";
               block.mutation = undefined;
               block.fields = {
-                LIST: [sig.stack, sig.stack],
+                LIST: [Signature.STACK, Signature.STACK],
               };
               block.inputs = {
                 INDEX: [1, [7, String(ctx.counter++)]],
@@ -952,7 +961,7 @@ export default async function ({ addon, console }) {
             for (let i = 0; i < calls.length; i++) {
               const call = calls[i];
               call.opcode = "procedures_call";
-              call.mutation.proccode = sig.fn + call.mutation.proccode;
+              call.mutation.proccode = Signature.FUNCTION + call.mutation.proccode;
               call.parent = prevIds.at(-1);
               target.blocks[currId] = call;
 
@@ -962,13 +971,15 @@ export default async function ({ addon, console }) {
             }
             stmtBlock.parent = prevIds.at(-1);
 
-            const isCall = stmtBlock.opcode === "procedures_call" && stmtBlock.mutation.proccode.startsWith(sig.fn);
-            const isStackPush = stmtBlock.opcode === "data_insertatlist" && stmtBlock.fields.LIST[0] === sig.stack;
+            const isCall =
+              stmtBlock.opcode === "procedures_call" && stmtBlock.mutation.proccode.startsWith(Signature.FUNCTION);
+            const isStackPush =
+              stmtBlock.opcode === "data_insertatlist" && stmtBlock.fields.LIST[0] === Signature.STACK;
             // add deleter after stmt
             /** @type {Serialized.Block} */
             const deleter = {
               opcode: "data_deleteoflist",
-              fields: { LIST: [sig.stack, sig.stack] },
+              fields: { LIST: [Signature.STACK, Signature.STACK] },
               // if the stmt we are transpiling is a fn call, we reserve index 1 for the return value
               inputs: { INDEX: [1, [7, isCall || isStackPush ? "2" : "1"]] },
               parent: stmtId,
@@ -1020,7 +1031,7 @@ export default async function ({ addon, console }) {
             const definitionId = Blockly.utils.genUid();
             const callId = Blockly.utils.genUid();
 
-            const proccode = `${sig.atomic}${stmtId.replaceAll("%", "\\%")} ${
+            const proccode = `${Signature.ATOMIC}${stmtId.replaceAll("%", "\\%")} ${
               scope?.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""
             }`;
 
@@ -1126,7 +1137,7 @@ export default async function ({ addon, console }) {
             const commentId = Blockly.utils.genUid();
             target.comments[commentId] = {
               blockId,
-              text: sig.inline,
+              text: Signature.INLINE,
               minimized: true,
               height: 200,
               width: 200,
@@ -1160,7 +1171,11 @@ export default async function ({ addon, console }) {
           const parent = blocks.getBlock(block.parent);
           if (parent && parent.next === block.id) {
             parent.next = replacement ? replacement.id : block.next;
-            // we could handle substacks, but we don't need to
+            for (const input of Object.values(parent.inputs)) {
+              if (input.block === block.id) {
+                input.block = replacement ? replacement.id : block.next;
+              }
+            }
           }
           const next = blocks.getBlock(block.next);
           if (next) {
@@ -1184,7 +1199,7 @@ export default async function ({ addon, console }) {
          * @returns {ScratchVM.Block[]}
          */
         function getStackReferences(block) {
-          if (block.opcode === "data_itemoflist" && block.fields.LIST.id === sig.stack) return [block];
+          if (block.opcode === "data_itemoflist" && block.fields.LIST.id === Signature.STACK) return [block];
           return Object.values(block.inputs).flatMap(({ block }) => getStackReferences(blocks.getBlock(block)));
         }
         /**
@@ -1196,6 +1211,7 @@ export default async function ({ addon, console }) {
           let curr = blocks.getBlock(blockId);
           let foldedStatement = null;
           do {
+            if (!curr) throw new Error("Unexpected end of atomic function call stack");
             // order the stack references by descending index
             const stackRefs = getStackReferences(curr).sort((...refs) => {
               const [a, b] = refs.map(({ inputs }) =>
@@ -1210,10 +1226,10 @@ export default async function ({ addon, console }) {
                 blocks.deleteBlock(block);
                 blocks.deleteBlock(shadow);
               }
-              stackRef.opcode = "function_call";
+              stackRef.opcode = FunctionBlockType.CALL;
               stackRef.fields = {};
               stackRef.mutation = correspondingCall.mutation;
-              stackRef.mutation.proccode = stackRef.mutation.proccode.slice(sig.fn.length);
+              stackRef.mutation.proccode = stackRef.mutation.proccode.slice(Signature.FUNCTION.length);
               stackRef.inputs = correspondingCall.inputs;
               detachBlock(correspondingCall);
               // just delete it directly since we move the inputs to this stack reference
@@ -1225,17 +1241,16 @@ export default async function ({ addon, console }) {
               detachBlock(deleter);
               blocks.deleteBlock(deleter.id);
             }
-            if (curr.opcode === "procedures_call" && curr.mutation.proccode.startsWith(sig.fn)) {
+            if (curr.opcode === "procedures_call" && curr.mutation.proccode.startsWith(Signature.FUNCTION)) {
               callStack.push(curr);
             }
             curr = blocks.getBlock(curr.next);
-            if (!curr) throw new Error("Unexpected end of atomic function call stack");
           } while (callStack.length);
           return foldedStatement;
         }
 
         for (const comment of Object.values(target.comments)) {
-          if (comment.text === sig.inline) {
+          if (comment.text === Signature.INLINE) {
             const block = blocks.getBlock(comment.blockId);
             if (!block) {
               console.warn("Inline comment without block", comment);
@@ -1257,10 +1272,10 @@ export default async function ({ addon, console }) {
               continue;
             }
 
-            if (prototype.mutation.proccode.startsWith(sig.fn)) {
-              topBlock.opcode = "function_definition";
-              prototype.opcode = "function_prototype";
-              prototype.mutation.proccode = prototype.mutation.proccode.slice(sig.fn.length);
+            if (prototype.mutation.proccode.startsWith(Signature.FUNCTION)) {
+              topBlock.opcode = FunctionBlockType.DEFINITION;
+              prototype.opcode = FunctionBlockType.PROTOTYPE;
+              prototype.mutation.proccode = prototype.mutation.proccode.slice(Signature.FUNCTION.length);
               let lastBlock = topBlock;
               while (lastBlock.next) {
                 const nextBlock = blocks.getBlock(lastBlock.next);
@@ -1270,15 +1285,19 @@ export default async function ({ addon, console }) {
               // remove the implicit return
               if (
                 lastBlock.opcode === "data_insertatlist" &&
-                lastBlock.fields.LIST.id === sig.stack &&
+                lastBlock.fields.LIST.id === Signature.STACK &&
                 blocks.getBlock(lastBlock.inputs.INDEX.block)?.fields.NUM.value === "1" &&
                 blocks.getBlock(lastBlock.inputs.ITEM.block)?.fields.TEXT.value === ""
               ) {
                 detachBlock(lastBlock);
                 blocks.deleteBlock(lastBlock.id);
               }
-            } else if (prototype.mutation.proccode.startsWith(sig.atomic)) {
-              const foldedStatement = foldCall(topBlock.id);
+            } else if (prototype.mutation.proccode.startsWith(Signature.ATOMIC)) {
+              const foldedStatement = foldCall(topBlock.next);
+              if (!foldedStatement) {
+                console.warn("Atomic definition without folded statement", topBlock);
+                continue;
+              }
               detachBlock(foldedStatement);
               // replace atomic calls with their folded statement definitions
               for (const block of Object.values(blocks._blocks)) {
@@ -1293,7 +1312,7 @@ export default async function ({ addon, console }) {
         }
 
         for (const block of Object.values(blocks._blocks)) {
-          if (block.opcode !== "data_insertatlist" || block.fields.LIST.id !== sig.stack) continue;
+          if (block.opcode !== "data_insertatlist" || block.fields.LIST.id !== Signature.STACK) continue;
           if (blocks.getBlock(block.inputs.INDEX.block)?.fields.NUM.value !== "1") {
             console.warn("Unexpected stack insertion block", block);
             continue;
@@ -1310,7 +1329,7 @@ export default async function ({ addon, console }) {
           }
           detachBlock(nextBlock);
           blocks.deleteBlock(nextBlock.id);
-          block.opcode = "function_return";
+          block.opcode = FunctionBlockType.RETURN;
 
           blocks.deleteBlock(block.inputs.INDEX.block);
           blocks.deleteBlock(block.inputs.INDEX.shadow);
