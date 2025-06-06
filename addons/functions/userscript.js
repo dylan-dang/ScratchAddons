@@ -29,7 +29,7 @@ export default async function ({ addon, console }) {
   patchBlockDragger();
   patchSerialization();
   patchDeserialization();
-  patchVM();
+  // patchVM();
 
   function patchCategory() {
     /**
@@ -779,10 +779,11 @@ export default async function ({ addon, console }) {
             let lastBlock = block;
             let lastBlockId = id;
             while (lastBlock.next) {
-              const nextBlock = getNonprimitiveBlock(lastBlock.next);
+              const id = lastBlock.next;
+              const nextBlock = getNonprimitiveBlock(id);
               if (!nextBlock) break;
               lastBlock = nextBlock;
-              lastBlockId = lastBlock.next;
+              lastBlockId = id;
             }
 
             // check for cap blocks
@@ -923,7 +924,7 @@ export default async function ({ addon, console }) {
            * @param {string} stmtId
            * @param {string} replacementId
            */
-          function replaceChildStmtRef(parent, stmtId, replacementId) {
+          function replaceChildStatementReference(parent, stmtId, replacementId) {
             if (!parent) return;
             // replace next block reference
             if (parent.next === stmtId) parent.next = replacementId;
@@ -935,19 +936,61 @@ export default async function ({ addon, console }) {
           }
 
           /**
+           * @param {string} nextId
+           * @param {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} block
+           */
+          function insertBefore(nextId, block) {
+            const nextBlock = getNonprimitiveBlock(nextId);
+            if (!nextBlock) throw new Error("tried to insert block before nonexistent block");
+            const parentId = nextBlock.parent;
+            const parentBlock = getNonprimitiveBlock(parentId);
+            const id = Blockly.utils.genUid();
+            // @ts-expect-error
+            target.blocks[id] = block;
+
+            replaceChildStatementReference(parentBlock, nextId, id);
+            block.parent = parentId;
+            block.next = nextId;
+            nextBlock.parent = id;
+
+            return id;
+          }
+
+          /**
+           * @param {string} parentId
+           * @param {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} block
+           */
+          function insertAfter(parentId, block) {
+            const parentBlock = getNonprimitiveBlock(parentId);
+            if (!parentBlock) throw new Error("tried to insert block before nonexistent block");
+            const nextId = parentBlock.next;
+            const nextBlock = getNonprimitiveBlock(nextId);
+            const id = Blockly.utils.genUid();
+            // @ts-expect-error
+            target.blocks[id] = block;
+
+            parentBlock.next = id;
+            block.parent = parentId;
+            block.next = nextId;
+            if (nextBlock) nextBlock.parent = id;
+
+            return id;
+          }
+
+          /**
            * Unfold all function calls to procedure calls from a statemtn
            * @param {string} stmtId
            * @return {string | undefined} - first function call id
            */
           function transpileStatement(stmtId) {
             const stmtBlock = getNonprimitiveBlock(stmtId);
+            const next = stmtBlock.next;
+
+            const nextBlock = getNonprimitiveBlock(next);
+
             const calls = getAndReplaceCalls(stmtBlock);
             if (calls.length === 0) return;
 
-            let currId = Blockly.utils.genUid();
-            replaceChildStmtRef(getNonprimitiveBlock(stmtBlock.parent), stmtId, currId);
-
-            const prevIds = [stmtBlock.parent];
             if (stmtBlock.topLevel) {
               const [firstCall] = calls;
               firstCall.x = stmtBlock.x;
@@ -958,43 +1001,32 @@ export default async function ({ addon, console }) {
               stmtBlock.y = undefined;
             }
 
-            for (let i = 0; i < calls.length; i++) {
-              const call = calls[i];
+            const callStmtIds = [];
+            for (const call of calls) {
               call.opcode = "procedures_call";
               call.mutation.proccode = Signature.FUNCTION + call.mutation.proccode;
-              call.parent = prevIds.at(-1);
-              target.blocks[currId] = call;
-
-              prevIds.push(currId);
-              currId = i === calls.length - 1 ? stmtId : Blockly.utils.genUid();
-              call.next = currId;
+              callStmtIds.push(insertBefore(stmtId, call));
             }
-            stmtBlock.parent = prevIds.at(-1);
 
             const isCall =
               stmtBlock.opcode === "procedures_call" && stmtBlock.mutation.proccode.startsWith(Signature.FUNCTION);
             const isStackPush =
               stmtBlock.opcode === "data_insertatlist" && stmtBlock.fields.LIST[0] === Signature.STACK;
-            // add deleter after stmt
-            /** @type {Serialized.Block} */
+
+            /** @type {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} */
             const deleter = {
               opcode: "data_deleteoflist",
               fields: { LIST: [Signature.STACK, Signature.STACK] },
               // if the stmt we are transpiling is a fn call, we reserve index 1 for the return value
               inputs: { INDEX: [1, [7, isCall || isStackPush ? "2" : "1"]] },
-              parent: stmtId,
-              next: stmtBlock.next,
               shadow: false,
               topLevel: false,
             };
-            const deleterId = Blockly.utils.genUid();
-            target.blocks[deleterId] = deleter;
-            stmtBlock.next = deleterId;
 
             // if there is more than one call replace deleter with repeater
             if (calls.length > 1) {
-              /** @type {Serialized.Block} */
-              const repeater = {
+              const deleterId = Blockly.utils.genUid();
+              const repeaterId = insertAfter(stmtId, {
                 opcode: "control_repeat",
                 fields: {},
                 inputs: {
@@ -1005,20 +1037,19 @@ export default async function ({ addon, console }) {
                 next: deleter.next,
                 shadow: false,
                 topLevel: false,
-              };
-              const repeaterId = Blockly.utils.genUid();
+              });
               deleter.next = null;
               deleter.parent = repeaterId;
-              target.blocks[repeaterId] = repeater;
-              stmtBlock.next = repeaterId;
+            } else {
+              insertAfter(stmtId, deleter);
             }
 
-            let startId = prevIds[1];
-            for (const [i, id] of prevIds.slice(1).entries()) {
-              const subStartId = transpileStatement(id);
-              if (i === 0 && subStartId) startId = subStartId;
+            let startId = null;
+            for (const callStmtId of callStmtIds) {
+              const subStartId = transpileStatement(callStmtId);
+              if (startId === null) startId = subStartId;
             }
-            return startId;
+            return startId ?? callStmtIds[0];
           }
 
           /**
@@ -1114,7 +1145,7 @@ export default async function ({ addon, console }) {
             };
             target.blocks[callId] = call;
 
-            replaceChildStmtRef(getNonprimitiveBlock(stmt.parent), stmtId, callId);
+            replaceChildStatementReference(getNonprimitiveBlock(stmt.parent), stmtId, callId);
             stmt.parent = definitionId;
             stmt.next = null;
           }
@@ -1340,5 +1371,91 @@ export default async function ({ addon, console }) {
         blocks.forceNoGlow = oldForceNoGlow;
       }
     });
+  }
+
+  function patchVM() {
+    /**
+     * @param {string} proccode
+     * @param {ScratchVM.Blocks | null} blocks
+     */
+    function getPrototype(blocks, proccode) {
+      for (const block of Object.values(blocks._blocks)) {
+        if (block.opcode !== FunctionBlockType.PROTOTYPE) continue;
+        if (block.mutation.proccode !== proccode) continue;
+        return block;
+      }
+      return null;
+    }
+
+    vm.runtime._primitives[FunctionBlockType.DEFINITION] = () => {
+      /** no-op */
+    };
+
+    /**
+     * @param {Record<string, any>} args
+     * @param {ScratchVM.BlockUtility} util
+     */
+    vm.runtime._primitives[FunctionBlockType.CALL] = (args, util) => {
+      if (util.stackFrame.executed) return;
+      util.stackFrame.executed = true;
+      const thread = util.thread;
+
+      const MAX_DEPTH = 1000;
+      if (thread.function?.depth ?? 0 > MAX_DEPTH) {
+        console.log("recursion depth exceeded");
+        return undefined;
+      }
+
+      const blocks = thread.target.blocks;
+
+      blocks._cache._executeCached = {};
+
+      const prototype = getPrototype(blocks, args.mutation.proccode);
+      if (prototype === null) return;
+      const mutation = /** @type {ScratchVM.ProcedurePrototypeMutation} */ (prototype.mutation);
+      /** @type {string[]} */
+      const names = JSON.parse(mutation.argumentnames);
+      /** @type {string[]} */
+      const ids = JSON.parse(mutation.argumentids);
+      const defaults = JSON.parse(mutation.argumentdefaults);
+
+      const childThread = util.runtime._pushThread(prototype.parent, util.target);
+      const childStackFrame = childThread.peekStackFrame();
+      childStackFrame.warpMode = JSON.parse(mutation.warp);
+
+      return new Promise((resolve) => {
+        childThread.function = {
+          depth: thread.function?.depth ?? 0,
+          resolve,
+          params: Object.fromEntries(
+            ids.map((id, i) => [names[i], Object.prototype.hasOwnProperty.call(args, id) ? args[id] : defaults[i]])
+          ),
+        };
+      });
+    };
+
+    /**
+     * @param {Record<string, any>} args
+     * @param {ScratchVM.BlockUtility} util
+     */
+    vm.runtime._primitives[FunctionBlockType.RETURN] = (args, util) => {
+      util.stopThisScript();
+      util.thread.function?.resolve(args.ITEM);
+    };
+
+    /**
+     * @param {Record<string, any>} args
+     * @param {ScratchVM.BlockUtility} util
+     */
+    function argReporter(args, util) {
+      const value = util.getParam(args.VALUE);
+      if (value !== null) return value;
+      const returnValue = util.thread.function?.params[args.VALUE] ?? null;
+      if (returnValue !== null) return returnValue;
+      return 0;
+    }
+
+    vm.runtime._primitives.argument_reporter_string_number = argReporter;
+    vm.runtime._primitives.argument_reporter_boolean = argReporter;
   }
 }

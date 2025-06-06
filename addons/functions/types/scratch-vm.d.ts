@@ -663,9 +663,10 @@ declare namespace ScratchVM {
     justReported: unknown;
     reporting: string;
     reported: unknown;
+    executed?: boolean;
     /** @deprecated unused */
     waitingReporter: unknown;
-    params: unknown;
+    params: Record<string, any>;
     executionContext: unknown;
     reset(): void;
   }
@@ -762,6 +763,14 @@ declare namespace ScratchVM {
     isRecursiveCall(procedureCode: string): boolean;
     stackClick: boolean;
     updateMonitor: boolean;
+    /** we set this ourselves */
+    function?: {
+      depth: number;
+      // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+      resolve(value: any): void;
+      // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+      params: Record<string, any>;
+    };
   }
 
   interface HatInfo {
