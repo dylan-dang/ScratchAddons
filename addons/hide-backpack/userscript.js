@@ -9,6 +9,17 @@ export default async function ({ addon, console }) {
     window.dispatchEvent(new Event("resize"));
   });
 
+  addon.tab.redux.initialize();
+  addon.tab.redux.addEventListener("statechanged", (e) => {
+    if (
+      ["scratch-gui/settings/SET_COLOR_MODE", "scratch-gui/settings/SET_THEME"].includes(e.detail.action.type) &&
+      !addon.self.disabled
+    ) {
+      // queueMicrotask isn't enough on new Blockly
+      setTimeout(changeBackpackVisibility, 0);
+    }
+  });
+
   while (true) {
     originalBackpack = await addon.tab.waitForElement("[class^=backpack_backpack-header_]", {
       markAsSeen: true,

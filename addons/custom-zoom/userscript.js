@@ -52,6 +52,11 @@ export default async function ({ addon, console }) {
   if (document.querySelector('[class^="backpack_backpack-container"]')) {
     window.dispatchEvent(new Event("resize"));
   }
+
+  if (!addon.self.enabledLate) {
+    addon.tab.traps.getWorkspace().scale = addon.settings.get("startZoom") / 100;
+  }
+
   addon.settings.addEventListener("change", update);
   while (true) {
     const selector = Blockly.registry ? ".blocklyZoomReset" : ".blocklyZoom";
@@ -60,7 +65,8 @@ export default async function ({ addon, console }) {
       reduxEvents: [
         "scratch-gui/mode/SET_PLAYER",
         "scratch-gui/locales/SELECT_LOCALE",
-        "scratch-gui/theme/SET_THEME",
+        "scratch-gui/settings/SET_COLOR_MODE",
+        "scratch-gui/settings/SET_THEME",
         "fontsLoaded/SET_FONTS_LOADED",
       ],
       reduxCondition: (state) => !state.scratchGui.mode.isPlayerOnly,
