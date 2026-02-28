@@ -237,6 +237,8 @@ export function patchSerialization(context) {
           if (block.opcode === FunctionBlockType.CALL) {
             const copy = { ...block };
             copy.comment = undefined;
+            copy.next = null;
+            copy.parent = null;
             block.opcode = "data_itemoflist";
             block.mutation = undefined;
             block.fields = {
@@ -291,15 +293,16 @@ export function patchSerialization(context) {
 
         /**
          * @param {string} nextId
-         * @param {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} block
+         * @param {Serialized.Block} block
          */
         function insertBefore(nextId, block) {
+          if (block.parent === null) throw new Error("block.parent must be null");
+          if (block.next === null) throw new Error("block.next must be null");
           const nextBlock = getNonprimitiveBlock(nextId);
           if (!nextBlock) throw new Error("tried to insert block before nonexistent block");
           const parentId = nextBlock.parent;
           const parentBlock = getNonprimitiveBlock(parentId);
           const id = Blockly.utils.genUid();
-          // @ts-expect-error
           target.blocks[id] = block;
 
           replaceChildStatementReference(parentBlock, nextId, id);
@@ -312,15 +315,16 @@ export function patchSerialization(context) {
 
         /**
          * @param {string} parentId
-         * @param {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} block
+         * @param {Serialized.Block} block
          */
         function insertAfter(parentId, block) {
+          if (block.parent === null) throw new Error("block.parent must be null");
+          if (block.next === null) throw new Error("block.next must be null");
           const parentBlock = getNonprimitiveBlock(parentId);
           if (!parentBlock) throw new Error("tried to insert block before nonexistent block");
           const nextId = parentBlock.next;
           const nextBlock = getNonprimitiveBlock(nextId);
           const id = Blockly.utils.genUid();
-          // @ts-expect-error
           target.blocks[id] = block;
 
           parentBlock.next = id;
@@ -366,7 +370,7 @@ export function patchSerialization(context) {
             stmtBlock.opcode === "procedures_call" && stmtBlock.mutation.proccode.startsWith(Signature.FUNCTION);
           const isStackPush = stmtBlock.opcode === "data_insertatlist" && stmtBlock.fields.LIST[0] === Signature.STACK;
 
-          /** @type {Omit<Serialized.Block, 'next' | 'parent'> & Partial<Pick<Serialized.Block, 'next' | 'parent'>>} */
+          /** @type {Serialized.Block} */
           const deleter = {
             opcode: "data_deleteoflist",
             fields: { LIST: [Signature.STACK, Signature.STACK] },
@@ -374,6 +378,8 @@ export function patchSerialization(context) {
             inputs: { INDEX: [1, [7, isCall || isStackPush ? "2" : "1"]] },
             shadow: false,
             topLevel: false,
+            next: null,
+            parent: null,
           };
 
           // if there is more than one call replace deleter with repeater
@@ -393,6 +399,7 @@ export function patchSerialization(context) {
             });
             deleter.next = null;
             deleter.parent = repeaterId;
+            target.blocks[deleterId] = deleter;
           } else {
             insertAfter(stmtId, deleter);
           }

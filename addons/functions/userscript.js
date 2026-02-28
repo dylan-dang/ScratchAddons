@@ -1,7 +1,7 @@
 /// <reference path="types/sb3.d.ts" />
 /// <reference path="types/userscript.d.ts" />
 
-import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection } from "./src/core.js";
+import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection, patchMenuBar } from "./src/core.js";
 import { patchDeserialization, patchSerialization } from "./src/serialization.js";
 
 /**
@@ -13,7 +13,6 @@ import { patchDeserialization, patchSerialization } from "./src/serialization.js
 
 /** @param {Userscript.Utilities} utils */
 export default async function ({ addon }) {
-  console.log("YIPPEEE");
 
   const Blockly = await addon.tab.traps.getBlockly();
   await addon.tab.scratchClassReady();
@@ -28,4 +27,5 @@ export default async function ({ addon }) {
   patchBlockDragger(context);
   patchSerialization(context);
   patchDeserialization(context);
+  patchMenuBar(context);
 }

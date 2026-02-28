@@ -1,10 +1,10 @@
 import { FunctionBlockType } from "./constants.js";
+import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
 /** @param {FunctionContext} context */
-export function patchCategory(context) {
-  const { addon, Blockly, vm } = context;
+export function patchCategory({ addon, Blockly, vm }) {
   /**
    * convert template strings to dom
    * @param {TemplateStringsArray} strings
@@ -24,34 +24,10 @@ export function patchCategory(context) {
       .trim();
     return Blockly.Xml.textToDom(interpolated);
   }
-
-  const FUNCTION_ICON = /* xml */ `
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      height="24px"
-      viewBox="0 -960 960 960"
-      width="24px"
-      fill-rule="evenodd"
-      fill="#575E75"
-    >
-      <path
-        d="M400-240v-80h62l105-120-105-120h-66l-64 344q-8 45-37 70.5T221-120q-45 0-73-24t-28-64
-        q0-32 17-51.5t43-19.5q25 0 42.5 17t17.5 41q0 5-.5 9t-1.5 9q5-1 8.5-5.5T252-221l62-339
-        H200v-80h129l21-114q7-38 37.5-62t72.5-24q44 0 72 26t28 65q0 30-17 49.5T500-680q-25 0-42.5-17
-        T440-739q0-5 .5-9t1.5-9q-6 2-9 6t-5 12l-17 99h189v80h-32l52 59 52-59h-32v-80h200v80h-62
-        L673-440l105 120h62v80H640v-80h32l-52-60-52 60h32v80H400Z"/>
-    </svg>`;
-
-  const NUMBER_OR_TEXT_ICON =
-    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1NyA0OSI+PGRlZnM+PHN0eWxlPi5jbHMtMXtvcGFjaXR5OjAuMzt9LmNscy0ye29wYWNpdHk6MC4xO30uY2xzLTN7ZmlsbDojZmY2NjgwO3N0cm9rZS1taXRlcmxpbWl0OjEwO30uY2xzLTMsLmNscy00e3N0cm9rZTojZjM1O30uY2xzLTR7ZmlsbDojZmY0ZDZhO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlIxXyBDLlByb2NlZHVyZSBFZGl0YmxlIElucHV0czwvdGl0bGU+PGcgaWQ9ImJvb2xlYW5fYm9vbGVhbl9pbnB1dHMiIGRhdGEtbmFtZT0iYm9vbGVhbiArIGJvb2xlYW4gaW5wdXRzIj48cmVjdCBjbGFzcz0iY2xzLTMiIHg9IjAuNSIgeT0iMC41IiB3aWR0aD0iNTYiIGhlaWdodD0iNDgiIHJ4PSI0IiByeT0iNCIvPjxyZWN0IGNsYXNzPSJjbHMtNCIgeD0iOC41IiB5PSI4LjUiIHdpZHRoPSI0MCIgaGVpZ2h0PSIzMiIgcng9IjE2IiByeT0iMTYiLz48L2c+PC9zdmc+";
-  const BOOLEAN_ICON =
-    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1NyA0OSI+PGRlZnM+PHN0eWxlPi5jbHMtMXtvcGFjaXR5OjAuMzt9LmNscy0ye29wYWNpdHk6MC4xO30uY2xzLTN7ZmlsbDojZmY2NjgwO3N0cm9rZS1taXRlcmxpbWl0OjEwO30uY2xzLTMsLmNscy00e3N0cm9rZTojZjM1O30uY2xzLTR7ZmlsbDojZmY0ZDZhO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjpyb3VuZDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlIxXyBDLlByb2NlZHVyZSBFZGl0YmxlIElucHV0czwvdGl0bGU+PGcgaWQ9ImJvb2xlYW5fYm9vbGVhbl9pbnB1dHMiIGRhdGEtbmFtZT0iYm9vbGVhbiArIGJvb2xlYW4gaW5wdXRzIj48cmVjdCBjbGFzcz0iY2xzLTMiIHg9IjAuNSIgeT0iMC41IiB3aWR0aD0iNTYiIGhlaWdodD0iNDgiIHJ4PSI0IiByeT0iNCIvPjxwYXRoIGNsYXNzPSJjbHMtNCIgZD0iTTMyLjUsNDAuNWgtOGwtMTYtMTZoMGwxNi0xNmg4bDE2LDE2aDBaIi8+PC9nPjwvc3ZnPg==";
-  const LABEL_ICON =
-    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1NyA0OSI+PGRlZnM+PHN0eWxlPi5jbHMtMXtvcGFjaXR5OjAuMzt9LmNscy0ye29wYWNpdHk6MC4xO30uY2xzLTN7ZmlsbDojZmY2NjgwO3N0cm9rZTojZjM1O3N0cm9rZS1taXRlcmxpbWl0OjEwO30uY2xzLTR7Zm9udC1zaXplOjEycHg7ZmlsbDojZmZmO2ZvbnQtZmFtaWx5OkhlbHZldGljYU5ldWUtQm9sZCwgSGVsdmV0aWNhIE5ldWUsIHNhbnMtc2VyaWY7Zm9udC13ZWlnaHQ6NzAwO2xldHRlci1zcGFjaW5nOjBlbTt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlIxXyBDLlByb2NlZHVyZSBFZGl0YmxlIElucHV0czwvdGl0bGU+PGcgaWQ9ImJvb2xlYW5fYm9vbGVhbl9pbnB1dHMiIGRhdGEtbmFtZT0iYm9vbGVhbiArIGJvb2xlYW4gaW5wdXRzIj48cmVjdCBjbGFzcz0iY2xzLTMiIHg9IjAuNSIgeT0iMC41IiB3aWR0aD0iNTYiIGhlaWdodD0iNDgiIHJ4PSI0IiByeT0iNCIvPjx0ZXh0IGNsYXNzPSJjbHMtNCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTcuNTcgMjcuNSkiPnRleHQ8L3RleHQ+PC9nPjwvc3ZnPgo=";
-
   // add category
   const CATEGORY_KEY = "FUNCTION";
   const originalGetBlocksXML = vm.runtime.getBlocksXML;
+  console.log("patching getBlocksXML");
   /** @param {any} target */
   vm.runtime.getBlocksXML = function (target) {
     const result = originalGetBlocksXML.call(this, target);
@@ -65,7 +41,7 @@ export function patchCategory(context) {
             colour="#cc5166"
             secondaryColour="#cc5166"
             custom="${CATEGORY_KEY}"
-            iconURI="data:image/svg+xml;base64,${btoa(FUNCTION_ICON)}"
+            iconURI="${FUNCTION_ICON}"
           />`,
     });
 
@@ -265,8 +241,7 @@ export function patchCategory(context) {
 }
 
 /** @param {FunctionContext} context */
-export function patchConnection(context) {
-  const { Blockly } = context;
+export function patchConnection({ Blockly }) {
   const originalCanConnectWithReason_ = Blockly.Connection.prototype.canConnectWithReason_;
   // @ts-ignore
   Blockly.Connection.prototype.canConnectWithReason_ = function (target) {
@@ -296,8 +271,7 @@ export function patchConnection(context) {
 }
 
 /** @param {FunctionContext} context */
-export function patchBlockDragger(context) {
-  const { Blockly } = context;
+export function patchBlockDragger({ Blockly }) {
   const oldEndBlockDrag = Blockly.BlockDragger.prototype.endBlockDrag;
   Blockly.BlockDragger.prototype.endBlockDrag = function (/** @type {any} */ ...args) {
     oldEndBlockDrag.apply(this, args);
@@ -334,8 +308,7 @@ export function patchBlockDragger(context) {
 }
 
 /** @param {FunctionContext} context */
-export function patchBlockSvg(context) {
-  const { Blockly } = context;
+export function patchBlockSvg({ Blockly }) {
   const originalRenderDrawTop_ = Blockly.BlockSvg.prototype.renderDrawTop_;
   /**
    * Render the top edge of the block.
@@ -474,8 +447,7 @@ export function patchBlockSvg(context) {
 }
 
 /** @param {FunctionContext} context */
-export function defineBlocks(context) {
-  const { Blockly } = context;
+export function defineBlocks({ Blockly }) {
   Blockly.Blocks[FunctionBlockType.RETURN] = {
     init() {
       this.jsonInit({
@@ -639,8 +611,7 @@ export function defineBlocks(context) {
 }
 
 /** @param {FunctionContext} context */
-export function patchVM(context) {
-  const { vm } = context;
+export function patchVM({ vm }) {
   /**
    * @param {string} proccode
    * @param {ScratchVM.Blocks | null} blocks
@@ -724,4 +695,21 @@ export function patchVM(context) {
 
   vm.runtime._primitives.argument_reporter_string_number = argReporter;
   vm.runtime._primitives.argument_reporter_boolean = argReporter;
+}
+
+/** @param {FunctionContext} context */
+export function patchMenuBar({ addon }) {
+  const fileGroup = document.querySelector(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
+  const buildButton = document.createElement('div');
+  buildButton.classList.add(addon.tab.scratchClass("menu-bar_menu-bar-item"), addon.tab.scratchClass("menu-bar_hoverable"));
+  buildButton.role = "button";
+  buildButton.ariaPressed = "false";
+  const image = document.createElement('img');
+  buildButton.appendChild(image);
+  image.src = BUILD_ICON;
+  buildButton.addEventListener("click", () => {
+    buildButton.ariaPressed = buildButton.ariaPressed === "true" ? "false" : "true";
+    image.src = buildButton.ariaPressed === "true" ? DEV_ICON : BUILD_ICON;
+  });
+  fileGroup.after(buildButton);
 }
