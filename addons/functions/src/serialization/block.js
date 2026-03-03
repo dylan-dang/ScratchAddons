@@ -283,10 +283,7 @@ export class RegisteredBlock {
     cloneRef(ref) {
         if (typeof ref === "string") {
             const block = this.graph.getBlock(ref);
-            if (block) {
-                console.log("cloning block", block.ref.opcode);
-                return block.clone().id;
-            }
+            if (block) return block.clone().id;
         }
         return structuredClone(ref);
     };
