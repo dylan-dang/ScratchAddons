@@ -2,7 +2,8 @@
 /// <reference path="types/userscript.d.ts" />
 
 import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection, patchMenuBar } from "./src/core.js";
-import { patchSerialization } from "./src/serialization/transform.js";
+import { patchDeserialization } from "./src/deserialization.js";
+import { patchSerialization } from "./src/serialization.js";
 
 /**
  * @typedef {Object} FunctionContext
@@ -26,6 +27,6 @@ export default async function ({ addon }) {
   patchBlockSvg(context);
   patchBlockDragger(context);
   patchSerialization(context);
-  // patchDeserialization(context);
+  patchDeserialization(context);
   patchMenuBar(context);
 }

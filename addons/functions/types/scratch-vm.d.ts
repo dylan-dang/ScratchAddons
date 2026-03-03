@@ -166,7 +166,7 @@ declare namespace ScratchVM {
 
     _blocks: Record<string, Block>;
 
-    getBlock(id: string): Block | undefined;
+    getBlock(id: string | null): Block | undefined;
 
     getOpcode(id: string): string | null;
 

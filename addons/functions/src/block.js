@@ -5,7 +5,7 @@
  * @prop {string} [check]
  */
 
-import { assert } from "../utils.js";
+import { assert } from "./utils.js";
 
 /**
  * @typedef {Object} BlockJson

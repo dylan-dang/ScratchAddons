@@ -1,9 +1,9 @@
-import { FunctionBlockType, Signature } from "../constants.js";
-import { assert } from "../utils.js";
 import { InputType, RegisteredBlock } from "./block.js";
+import { FunctionBlockType, Signature } from "./constants.js";
 import { SerializedBlockGraph } from "./graph.js";
+import { assert } from "./utils.js";
 
-/** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
 
 class SerializeTransformer {
