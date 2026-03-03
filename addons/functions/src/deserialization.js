@@ -6,7 +6,7 @@ import { assert } from "./utils.js";
 
 export class DeserializeTransformer {
     /**
-     * @param {{ vm: object }} dependencies
+     * @param {{ vm: ScratchVM.VM }} dependencies
      */
     constructor({ vm }) {
         this.vm = vm;
@@ -26,6 +26,12 @@ export class DeserializeTransformer {
         blocks.forceNoGlow = oldForceNoGlow;
     }
 
+    transpileTargets() {
+        for (const target of this.vm.runtime.targets) {
+            this.transpileTarget(target);
+        }
+    }
+
     /**
      * @private
      * @param {ScratchVM.Blocks} blocks
@@ -34,12 +40,11 @@ export class DeserializeTransformer {
      */
     detachBlock(blocks, block, replacement) {
         const parent = block.parent ? blocks.getBlock(block.parent) : null;
-        if (parent && parent.next === block.id) {
-            const nextId = replacement ? replacement.id : block.next ?? "";
-            parent.next = nextId;
-            for (const input of Object.values(parent.inputs)) {
-                if (!input) continue;
-                if (input.block !== block.id) continue;
+        const nextId = replacement ? replacement.id : block.next ?? "";
+        if (parent) {
+            if (parent.next === block.id) parent.next = nextId;
+            for (const input of Object.values(parent.inputs || {})) {
+                if (!input || input.block !== block.id) continue;
                 input.block = nextId;
             }
         }
@@ -132,26 +137,6 @@ export class DeserializeTransformer {
 
     /**
      * @private
-     * @param {ScratchVM.Target} target
-     */
-    transpileInlineComments(target) {
-        const blocks = target.blocks;
-        for (const comment of Object.values(target.comments)) {
-            if (comment.text === Signature.INLINE) {
-                const block = blocks.getBlock(comment.blockId);
-                if (!block) {
-                    console.warn("Inline comment without block", comment);
-                    continue;
-                }
-                delete target.comments[comment.id];
-                this.foldCall(blocks, block.id);
-            }
-        }
-    }
-
-
-    /**
-     * @private
      * @param {ScratchVM.Blocks} blocks
      * @param {ScratchVM.Block} topBlock
      * @param {ScratchVM.Block} prototype
@@ -203,6 +188,7 @@ export class DeserializeTransformer {
         for (const block of Object.values(blocks._blocks)) {
             if (block.opcode === "procedures_call" && block.mutation?.proccode === prototype.mutation.proccode) {
                 this.detachBlock(blocks, block, foldedStatement);
+                blocks.deleteBlock(block.id);
             }
         }
         blocks.deleteBlock(topBlock.id);
@@ -221,9 +207,10 @@ export class DeserializeTransformer {
             assert(topBlock, "Unexpected script without top block");
             if (topBlock.opcode !== "procedures_definition") continue;
             if (!topBlock.inputs.custom_block) continue;
-            if (topBlock.mutation?.warp === "true") continue;
 
             const prototype = blocks.getBlock(topBlock.inputs.custom_block.block);
+
+
             if (!prototype || prototype.opcode !== "procedures_prototype") {
                 console.warn("Function definition without prototype", topBlock);
                 continue;
@@ -238,6 +225,10 @@ export class DeserializeTransformer {
                 this.transpileFunctionDefinitions(blocks, topBlock, prototype);
             } else if (prototype.mutation.proccode.startsWith(Signature.ATOMIC)) {
                 this.transpileAtomicDefinitions(blocks, topBlock, prototype);
+            }
+
+            if (prototype.mutation?.warp === "true") {
+                this.walkCallSites(blocks, topBlock);
             }
         }
     }
@@ -322,13 +313,10 @@ export class DeserializeTransformer {
 export function patchDeserialization(context) {
     const { vm } = context;
     const transformer = new DeserializeTransformer({ vm });
-    const patchedTargets = new WeakSet();
-
-    vm.addListener("targetsUpdate", () => {
-        for (const target of vm.runtime.targets) {
-            if (patchedTargets.has(target)) continue;
-            patchedTargets.add(target);
-            transformer.transpileTarget(target);
-        }
+    vm.once("targetsUpdate", () => {
+        console.log("transpiling targets for once");
+        transformer.transpileTargets();
     });
+
+    return transformer;
 }

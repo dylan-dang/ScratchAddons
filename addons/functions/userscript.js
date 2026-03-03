@@ -27,6 +27,6 @@ export default async function ({ addon }) {
   patchBlockSvg(context);
   patchBlockDragger(context);
   patchSerialization(context);
-  patchDeserialization(context);
-  patchMenuBar(context);
+  const transformer = patchDeserialization(context);
+  patchMenuBar(context, transformer);
 }

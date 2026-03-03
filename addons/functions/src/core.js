@@ -1,4 +1,5 @@
 import { FunctionBlockType } from "./constants.js";
+import { DeserializeTransformer } from "./deserialization.js";
 import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
 import { assert, waitForElement as getElement } from "./utils.js";
 
@@ -721,8 +722,11 @@ function saveScrollPosition(workspace) {
   };
 }
 
-/** @param {FunctionContext} context */
-export async function patchMenuBar({ addon, vm }) {
+/**
+ * @param {FunctionContext} context
+ * @param {DeserializeTransformer} transformer
+ */
+export async function patchMenuBar({ addon, vm }, transformer) {
   const fileGroup = await getElement(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
   const buildButton = document.createElement('div');
   buildButton.classList.add(addon.tab.scratchClass("menu-bar_menu-bar-item"), addon.tab.scratchClass("menu-bar_hoverable"));
@@ -743,6 +747,7 @@ export async function patchMenuBar({ addon, vm }) {
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
     } else {
+      transformer.transpileTargets();
       image.src = BUILD_ICON;
       buildButton.ariaPressed = "false";
     }
