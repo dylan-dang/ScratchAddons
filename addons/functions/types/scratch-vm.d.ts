@@ -1554,7 +1554,7 @@ declare namespace ScratchVM {
      * Change the editing target. If a target with the ID doesn't exist, silently does nothing.
      * @see {ScratchVM.Runtime.setEditingTarget}
      */
-    setEditingTarget(targetId: string): void;
+    setEditingTarget(targetId?: string): void;
 
     getTargetIdForDrawableId(drawableId: number): string | null;
 

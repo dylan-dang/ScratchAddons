@@ -706,8 +706,23 @@ export function patchVM({ vm }) {
   vm.runtime._primitives.argument_reporter_boolean = argReporter;
 }
 
+/**
+ * @param {import("blockly").WorkspaceSvg} workspace
+ * @returns {{ x: number, y: number } | undefined}
+ */
+function saveScrollPosition(workspace) {
+  if (!workspace.scrollbar) return;
+  const hScroll = workspace.scrollbar.hScroll;
+  const vScroll = workspace.scrollbar.vScroll;
+  if (!hScroll || !vScroll) return;
+  return {
+    x: hScroll.handlePosition_ / hScroll.ratio_,
+    y: vScroll.handlePosition_ / vScroll.ratio_,
+  };
+}
+
 /** @param {FunctionContext} context */
-export async function patchMenuBar({ addon }) {
+export async function patchMenuBar({ addon, vm }) {
   const fileGroup = await getElement(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
   const buildButton = document.createElement('div');
   buildButton.classList.add(addon.tab.scratchClass("menu-bar_menu-bar-item"), addon.tab.scratchClass("menu-bar_hoverable"));
@@ -716,9 +731,21 @@ export async function patchMenuBar({ addon }) {
   const image = document.createElement('img');
   buildButton.appendChild(image);
   image.src = BUILD_ICON;
-  buildButton.addEventListener("click", () => {
-    buildButton.ariaPressed = buildButton.ariaPressed === "true" ? "false" : "true";
-    image.src = buildButton.ariaPressed === "true" ? DEV_ICON : BUILD_ICON;
+  buildButton.addEventListener("click", async () => {
+    const doBuild = buildButton.ariaPressed === "false";
+    if (doBuild) {
+      const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
+      const workspace = addon.tab.traps.getWorkspace();
+      const scroll = saveScrollPosition(workspace);
+      await vm.loadProject(vm.toJSON());
+      vm.setEditingTarget(vm.runtime.targets[targetIdx].id);
+      if (scroll) workspace.scrollbar?.set(scroll.x, scroll.y);
+      image.src = DEV_ICON;
+      buildButton.ariaPressed = "true";
+    } else {
+      image.src = BUILD_ICON;
+      buildButton.ariaPressed = "false";
+    }
   });
   fileGroup.after(buildButton);
 }
