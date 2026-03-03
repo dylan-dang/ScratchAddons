@@ -1,5 +1,6 @@
 import { assert } from "../../utils.js";
 import { FunctionBlockType, Signature } from "../shared.js";
+import { validate } from "../validator.js";
 import { InputType, RegisteredBlock } from "./block.js";
 import { SerializedBlockGraph } from "./graph.js";
 
@@ -27,7 +28,9 @@ class Encoder {
     this.transpileDefinitions(target, graph);
     this.transpileReturns(graph);
     this.transpileCalls(target, graph);
-    graph.validate();
+    for (const error of validate(graph.blocks)) {
+      console.warn(error);
+    }
   }
 
   /**
