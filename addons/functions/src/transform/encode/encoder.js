@@ -1,12 +1,12 @@
+import { assert } from "../../utils.js";
+import { FunctionBlockType, Signature } from "../shared.js";
 import { InputType, RegisteredBlock } from "./block.js";
-import { FunctionBlockType, Signature } from "./constants.js";
 import { SerializedBlockGraph } from "./graph.js";
-import { assert } from "./utils.js";
 
-/** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("../../../userscript.js").FunctionContext} FunctionContext */
 
 
-class SerializeTransformer {
+class Encoder {
   /**
    * @param {{ Blockly: ScratchBlocks.Blockly, vm: object }} dependencies
    */
@@ -348,7 +348,7 @@ class SerializeTransformer {
 
 /** @param {FunctionContext} context */
 export function patchSerialization({ Blockly, vm }) {
-  const transpiler = new SerializeTransformer({ Blockly, vm });
+  const transpiler = new Encoder({ Blockly, vm });
   const vmPrototype = Object.getPrototypeOf(vm);
   const originalToJSON = vmPrototype.toJSON;
   /**

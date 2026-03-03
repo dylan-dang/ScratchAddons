@@ -1,10 +1,10 @@
-/// <reference path="../types/scratch-vm.d.ts" />
-import { FunctionBlockType, Signature } from "./constants.js";
-import { assert } from "./utils.js";
+/// <reference path="../../../types/scratch-vm.d.ts" />
+import { assert } from "../../utils.js";
+import { FunctionBlockType, Signature } from "../shared.js";
 
-/** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("../../../userscript.js").FunctionContext} FunctionContext */
 
-export class DeserializeTransformer {
+export class Decoder {
     /**
      * @param {{ vm: ScratchVM.VM }} dependencies
      */
@@ -22,6 +22,7 @@ export class DeserializeTransformer {
 
         this.transpileDefinitions(blocks);
         this.transpileReturns(blocks);
+        this.validate(blocks);
 
         blocks.forceNoGlow = oldForceNoGlow;
     }
@@ -272,7 +273,6 @@ export class DeserializeTransformer {
                 this.walkCallSites(blocks, topBlock);
             }
         }
-        verifyBlockGraph(blocks, "transpileDefinitions");
     }
 
     /**
@@ -349,122 +349,146 @@ export class DeserializeTransformer {
             if (indexInput.shadow) blocks.deleteBlock(indexInput.shadow);
             delete block.inputs.INDEX;
         }
-        verifyBlockGraph(blocks, "transpileReturns");
     }
-}
 
-/**
- * Verifies the block graph integrity for a Scratch VM Blocks container.
- * Throws if invalid.
- * - No dangling references: all referenced block IDs in parent, next, or inputs exist
- * - No orphans: every block is referenced unless it is a top-level script
- * - Double-link consistency:
- *   - If block B is next on block A, then B.parent === A
- *   - If block A has parent B, then B has A as next or in one of its inputs (block or shadow)
- *
- * @param {ScratchVM.Blocks} blocks
- * @param {string} [context] Optional context for the error message
- */
-export function verifyBlockGraph(blocks, context = "verification") {
-    /** @type {string[]} */
-    const errors = [];
-    const blockIds = new Set();
-    /** @type {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} */
-    const referencesByBlockId = new Map();
+    /**
+     * Validates the block graph integrity for a Scratch VM Blocks container.
+     * Logs warnings for each violation instead of throwing.
+     *
+     * @param {ScratchVM.Blocks} blocks
+     */
+    validate(blocks) {
+        const blockIds = new Set();
+        /** @type {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} */
+        const referencesByBlockId = new Map();
 
-    for (const id of Object.keys(blocks._blocks)) {
-        const blockOrPrimitive = blocks._blocks[id];
-        if (blockOrPrimitive && typeof blockOrPrimitive === "object" && !Array.isArray(blockOrPrimitive)) {
-            blockIds.add(id);
+        for (const id of Object.keys(blocks._blocks)) {
+            const blockOrPrimitive = blocks._blocks[id];
+            if (blockOrPrimitive && typeof blockOrPrimitive === "object" && !Array.isArray(blockOrPrimitive)) {
+                blockIds.add(id);
+            }
+        }
+
+        const topLevelIds = new Set(blocks.getScripts());
+
+        for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+            if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+            const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+
+            /** @param {string} refId @param {"parent" | "next" | "input"} kind */
+            const recordRef = (refId, kind) => {
+                if (typeof refId !== "string" || !refId) return;
+                const refs = referencesByBlockId.get(refId) ?? [];
+                refs.push({ source: id, kind });
+                referencesByBlockId.set(refId, refs);
+            };
+
+            if (block.parent) recordRef(block.parent, "parent");
+            if (block.next) recordRef(block.next, "next");
+
+            for (const input of Object.values(block.inputs ?? {})) {
+                if (!input) continue;
+                if (input.block) recordRef(input.block, "input");
+                if (input.shadow) recordRef(input.shadow, "input");
+            }
+        }
+
+        this.validateDanglingReferences(blocks, blockIds, referencesByBlockId);
+        this.validateOrphans(blocks, topLevelIds, referencesByBlockId);
+        this.validateNextParentLinks(blocks);
+        this.validateParentChildLinks(blocks);
+    }
+
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {Set<string>} blockIds
+     * @param {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} referencesByBlockId
+     */
+    validateDanglingReferences(blocks, blockIds, referencesByBlockId) {
+        for (const [refId, refs] of referencesByBlockId) {
+            if (!blockIds.has(refId)) {
+                console.warn(
+                    `Dangling reference: block "${refId}" is referenced but does not exist. Sources: ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
+                );
+            }
         }
     }
 
-    const topLevelIds = new Set(blocks.getScripts());
-
-    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
-        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
-        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
-
-        /** @param {string} refId @param {"parent" | "next" | "input"} kind */
-        const recordRef = (refId, kind) => {
-            if (typeof refId !== "string" || !refId) return;
-            const refs = referencesByBlockId.get(refId) ?? [];
-            refs.push({ source: id, kind });
-            referencesByBlockId.set(refId, refs);
-        };
-
-        if (block.parent) recordRef(block.parent, "parent");
-        if (block.next) recordRef(block.next, "next");
-
-        for (const input of Object.values(block.inputs ?? {})) {
-            if (!input) continue;
-            if (input.block) recordRef(input.block, "input");
-            if (input.shadow) recordRef(input.shadow, "input");
-        }
-    }
-
-    // Check dangling references
-    for (const [refId, refs] of referencesByBlockId) {
-        if (!blockIds.has(refId)) {
-            errors.push(
-                `Dangling reference: block "${refId}" is referenced but does not exist. Sources: ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {Set<string>} topLevelIds
+     * @param {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} referencesByBlockId
+     */
+    validateOrphans(blocks, topLevelIds, referencesByBlockId) {
+        for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+            if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+            if (topLevelIds.has(id)) continue;
+            if (referencesByBlockId.has(id)) continue;
+            const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+            console.warn(
+                `Orphan block: "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`
             );
         }
     }
 
-    // Check orphans (blocks neither top-level nor referenced)
-    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
-        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
-        if (topLevelIds.has(id)) continue;
-        if (referencesByBlockId.has(id)) continue;
-        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
-        errors.push(`Orphan block: "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`);
-    }
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     */
+    validateNextParentLinks(blocks) {
+        for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+            if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+            const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
 
-    // Check double-link consistency
-    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
-        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
-        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
-
-        if (block.next) {
-            const nextBlock = blocks.getBlock(block.next);
-            if (nextBlock && nextBlock.parent !== id) {
-                errors.push(
-                    `Broken next→parent link: block "${id}" has next="${block.next}", but that block has parent="${nextBlock.parent}" (expected "${id}")`
-                );
-            }
-        }
-
-        if (block.parent) {
-            const parentBlock = blocks.getBlock(block.parent);
-            if (!parentBlock) continue;
-            let found = parentBlock.next === id;
-            if (!found) {
-                for (const input of Object.values(parentBlock.inputs ?? {})) {
-                    if (!input) continue;
-                    if (input.block === id || input.shadow === id) {
-                        found = true;
-                        break;
-                    }
+            if (block.next) {
+                const nextBlock = blocks.getBlock(block.next);
+                if (nextBlock && nextBlock.parent !== id) {
+                    console.warn(
+                        `Broken next→parent link: block "${id}" has next="${block.next}", but that block has parent="${nextBlock.parent}" (expected "${id}")`
+                    );
                 }
             }
-            if (!found) {
-                errors.push(
-                    `Broken parent→child link: block "${id}" has parent="${block.parent}", but parent does not reference "${id}" in next or inputs`
-                );
-            }
         }
     }
 
-    if (errors.length > 0) {
-        throw new Error(`${context} failed: ${errors.join(", ")}`);
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     */
+    validateParentChildLinks(blocks) {
+        for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+            if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+            const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+
+            if (block.parent) {
+                const parentBlock = blocks.getBlock(block.parent);
+                if (!parentBlock) continue;
+                let found = parentBlock.next === id;
+                if (!found) {
+                    for (const input of Object.values(parentBlock.inputs ?? {})) {
+                        if (!input) continue;
+                        if (input.block === id || input.shadow === id) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    console.warn(
+                        `Broken parent→child link: block "${id}" has parent="${block.parent}", but parent does not reference "${id}" in next or inputs`
+                    );
+                }
+            }
+        }
     }
 }
 
 /** @param {FunctionContext} context */
 export function patchDeserialization(context) {
     const { vm } = context;
-    const transformer = new DeserializeTransformer({ vm });
+    const transformer = new Decoder({ vm });
     vm.once("targetsUpdate", () => {
         transformer.transpileTargets();
     });

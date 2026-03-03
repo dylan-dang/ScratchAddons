@@ -160,7 +160,7 @@ export class SerializedBlockGraph {
         for (const [refId, refs] of referencesByBlockId) {
             if (!blockIds.has(refId)) {
                 console.warn(
-                    `Sanity check failed: dangling reference to block "${refId}" from ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
+                    `Encoder: dangling reference to block "${refId}" from ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
                 );
             }
         }
@@ -177,7 +177,7 @@ export class SerializedBlockGraph {
             if (block.topLevel) continue;
             if (referencesByBlockId.has(id)) continue;
             console.warn(
-                `Sanity check failed: block "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`
+                `Encoder: block "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`
             );
         }
     }
@@ -195,7 +195,7 @@ export class SerializedBlockGraph {
                 const nextRef = /** @type {Serialized.Block} */ (nextBlock);
                 if (nextRef.parent !== id) {
                     console.warn(
-                        `Sanity check failed: block "${id}" has next="${block.next}", but block "${block.next}" has parent="${nextRef.parent}" (expected "${id}")`
+                        `Encoder: block "${id}" has next="${block.next}", but block "${block.next}" has parent="${nextRef.parent}" (expected "${id}")`
                     );
                 }
             }
@@ -225,7 +225,7 @@ export class SerializedBlockGraph {
 
                 if (!found) {
                     console.warn(
-                        `Sanity check failed: block "${id}" has parent="${block.parent}", but parent block does not reference "${id}" in next or inputs`
+                        `Encoder: block "${id}" has parent="${block.parent}", but parent block does not reference "${id}" in next or inputs`
                     );
                 }
             }

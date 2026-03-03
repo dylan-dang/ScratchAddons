@@ -1,6 +1,6 @@
-import { FunctionBlockType } from "./constants.js";
-import { DeserializeTransformer } from "./deserialization.js";
 import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
+import { Decoder } from "./transform/decode/decoder.js";
+import { FunctionBlockType } from "./transform/shared.js";
 import { assert, waitForElement as getElement } from "./utils.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
@@ -723,7 +723,7 @@ function saveScrollPosition(workspace) {
 
 /**
  * @param {FunctionContext} context
- * @param {DeserializeTransformer} transformer
+ * @param {Decoder} transformer
  */
 export async function patchMenuBar({ addon, vm }, transformer) {
   const fileGroup = await getElement(`.${addon.tab.scratchClass("menu-bar_file-group")}`);

@@ -2,8 +2,8 @@
 /// <reference path="types/userscript.d.ts" />
 
 import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection, patchMenuBar } from "./src/core.js";
-import { patchDeserialization } from "./src/deserialization.js";
-import { patchSerialization } from "./src/serialization.js";
+import { patchDeserialization } from "./src/transform/decode/decoder.js";
+import { patchSerialization } from "./src/transform/encode/encoder.js";
 
 /**
  * @typedef {Object} FunctionContext
