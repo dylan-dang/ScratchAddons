@@ -2,7 +2,7 @@
 /// <reference path="types/userscript.d.ts" />
 
 import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection, patchMenuBar } from "./src/core.js";
-import { patchSerialization } from "./src/serialization.js";
+import { patchSerialization } from "./src/serialization/transform.js";
 
 /**
  * @typedef {Object} FunctionContext
