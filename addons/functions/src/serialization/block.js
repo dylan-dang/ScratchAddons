@@ -68,10 +68,11 @@ export class RegisteredBlock {
     /**
      * @private
      * @param {RegisteredBlock | null} parent
+     * @param {boolean} [setNext]
      */
-    linkToParent(parent) {
+    linkToParent(parent, setNext = true) {
         this.ref.parent = parent?.id ?? null;
-        if (parent) parent.ref.next = this.id;
+        if (parent && setNext) parent.ref.next = this.id;
     }
 
     /**
@@ -118,6 +119,7 @@ export class RegisteredBlock {
     }
 
     /**
+     * Should only be used on statement blocks
      * @param {RegisteredBlock} other
      */
     insertAfter(other) {
@@ -127,6 +129,7 @@ export class RegisteredBlock {
     }
 
     /**
+     * Should only be used on statement blocks
      * @param {RegisteredBlock} other
      */
     insertBefore(other) {
@@ -137,6 +140,27 @@ export class RegisteredBlock {
             parent.linkToNext(other);
         }
     }
+
+    /**
+     * Swap the position of this block with another block, be careful of connection types
+     * @param {RegisteredBlock} other
+     */
+    swap(other) {
+        const parent = this.getParent();
+        const next = this.getNext();
+        const otherParent = other.getParent();
+        const otherNext = other.getNext();
+
+        this.linkToParent(otherParent, otherParent?.ref.next === other.id);
+        this.linkToNext(otherNext);
+        other.linkToParent(parent, parent?.ref.next === this.id);
+        other.linkToNext(next);
+
+        // handle inputs references
+        parent?.replaceInputReferences(this, other);
+        otherParent?.replaceInputReferences(other, this);
+    }
+
 
     /**
      * @param {Partial<Serialized.Block>} partial
@@ -241,64 +265,65 @@ export class RegisteredBlock {
     }
 
     /**
-     * copy this block and redirect all inputs to the new block
-     * The orignal block should not use inputs after cloning
+     * clone this block and its descendants
      * @returns {RegisteredBlock}
      */
-    copy() {
-        const copy = this.graph.register(structuredClone(this.ref));
-        // redirect all inputs to the new block
-        for (const inputBlock of this.getInputBlocks()) {
-            inputBlock.ref.parent = this.id;
-        }
-        return copy;
+    clone() {
+        const clone = this.graph.register(structuredClone(this.ref));
+        clone.copyInputs(this);
+        const nextClone = this.getNext()?.clone() ?? null;
+        this.linkToNext(nextClone);
+        return clone;
     }
 
     /**
-     * Swap the position of this block with another block
-     * @param {RegisteredBlock} other
+     * @param {string | null | Serialized.Primitive} ref
+     * @returns {string | null | Serialized.Primitive}
      */
-    swap(other) {
-        const parent = this.getParent();
-        const next = this.getNext();
-        this.linkToParent(other.getParent());
-        this.linkToNext(other.getNext());
-        other.linkToParent(parent);
-        other.linkToNext(next);
-        // handle branching blocks with substacks
-        parent?.replaceInputReferences(this, other);
-        other.getParent()?.replaceInputReferences(other, this);
+    cloneRef(ref) {
+        if (typeof ref === "string") {
+            const block = this.graph.getBlock(ref);
+            if (block) {
+                console.log("cloning block", block.ref.opcode);
+                return block.clone().id;
+            }
+        }
+        return structuredClone(ref);
+    };
+
+    /**
+     * @template {Serialized.Primitive} T
+     * @private
+     * @param {T} primitive
+     * @returns {T}
+     */
+    clonePrimitive(primitive) {
+        const [type] = primitive;
+        switch (type) {
+            case InputType.NoShadow:
+            case InputType.SameShadow:
+                return /** @type {T} */ ([
+                    type,
+                    this.cloneRef(primitive[1])
+                ]);
+            case InputType.DifferentShadow:
+                return /** @type {T} */ ([
+                    type,
+                    this.cloneRef(primitive[1]),
+                    this.cloneRef(primitive[2])]);
+            default:
+                return structuredClone(primitive);
+        }
     }
 
     /**
-     * shallow copy the inputs of another block to this block
-     * @param {RegisteredBlock} other
+     * clone the inputs of another block and assign them to this block
+     * @param {RegisteredBlock } other
      */
     copyInputs(other) {
         for (const [name, input] of Object.entries(other?.ref.inputs ?? {})) {
             if (!input) continue;
-            const [type, reference] = input;
-            switch (type) {
-                case InputType.SameShadow:
-                case InputType.NoShadow:
-                case InputType.DifferentShadow:
-                    if (typeof reference !== "string") {
-                        // this shouldn't happen
-                        this.ref.inputs[name] = input;
-                        break;
-                    }
-                    const copy = this.graph.getBlock(reference)?.copy();
-                    assert(copy);
-                    /** @type {Serialized.Primitive} */
-                    const copyRef = [...input];
-                    copyRef[1] = copy.id;
-
-                    this.ref.inputs[name] = copyRef;
-                    break;
-                default:
-                    this.ref.inputs[name] = input;
-                    break;
-            }
+            this.ref.inputs[name] = this.clonePrimitive(input);
         }
     }
 
