@@ -283,6 +283,23 @@ class SerializedBlockGraph {
       }
     }
   }
+
+  /**
+ * @param {string} opcode
+ * @returns {BlockJson}
+ */
+  getBlockDefinition(opcode) {
+    const ctx = {
+      /** @type {BlockJson} */
+      json: null,
+      /** @param {BlockJson} json */
+      jsonInit(json) {
+        this.json = json;
+      },
+    };
+    this.Blockly.Blocks[opcode].init.call(ctx);
+    return ctx.json;
+  }
 }
 
 class RegisteredBlock {
@@ -385,7 +402,7 @@ class RegisteredBlock {
    * @returns {BlockJson}
    */
   getBlockDefinition() {
-    return getBlockDefinition(this.graph.Blockly, this.ref.opcode);
+    return this.graph.getBlockDefinition(this.ref.opcode);
   }
 
   /**
@@ -552,340 +569,333 @@ function replaceStopScripts(block) {
   }
 }
 
-/**
- * @param {ScratchBlocks.Blockly} Blockly
- * @param {string} opcode
- * @returns {BlockJson}
- */
-function getBlockDefinition(Blockly, opcode) {
-  const ctx = {
-    /** @type {BlockJson} */
-    json: null,
-    /** @param {BlockJson} json */
-    jsonInit(json) {
-      this.json = json;
-    },
-  };
-  Blockly.Blocks[opcode].init.call(ctx);
-  return ctx.json;
+class SerializeTransformer {
+  /**
+   * @param {{ Blockly: ScratchBlocks.Blockly, vm: object }} dependencies
+   */
+  constructor({ Blockly, vm }) {
+    this.Blockly = Blockly;
+    this.vm = vm;
+  }
+
+  /**
+   * @param {Serialized.Target} target
+   */
+  transpileTarget(target) {
+    const graph = new SerializedBlockGraph({
+      Blockly: this.Blockly,
+      blocks: target.blocks,
+    });
+    this.transpilePrototypes(graph);
+    this.transpileDefinitions(target, graph);
+    this.transpileReturns(graph);
+    this.transpileCalls(target, graph);
+    graph.validate();
+  }
+
+  /**
+   * @private
+   * @param {SerializedBlockGraph} graph
+   */
+  transpilePrototypes(graph) {
+    for (const prototype of graph.getBlocks([FunctionBlockType.PROTOTYPE])) {
+      prototype.assign({
+        opcode: "procedures_prototype",
+        mutation: {
+          ...prototype.ref.mutation,
+          proccode: Signature.FUNCTION + prototype.ref.mutation.proccode,
+        },
+      });
+    }
+  }
+
+  /**
+   * @private
+   * @param {Serialized.Target} target
+   * @param {SerializedBlockGraph} graph
+   */
+  transpileDefinitions(target, graph) {
+    for (const definition of graph.getBlocks([FunctionBlockType.DEFINITION])) {
+      // define stack list if function definition exists
+      target.lists[Signature.STACK] = [Signature.STACK, []];
+
+      definition.assign({ opcode: "procedures_definition" });
+      replaceStopScripts(definition);
+
+      const lastBlock = definition.tail();
+
+      if ([
+        "control_delete_this_clone",
+        "control_forever",
+        FunctionBlockType.RETURN,
+        "control_stop",
+      ].includes(lastBlock.ref.opcode)) continue;
+      if (lastBlock.ref.mutation?.hasnext === "false") continue;
+
+      lastBlock.insertAfter(graph.register({
+        opcode: "data_insertatlist",
+        inputs: {
+          ITEM: [InputType.SameShadow, [InputType.Text, ""]],
+          INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
+        },
+        fields: { LIST: [Signature.STACK, Signature.STACK] },
+        shadow: false,
+        topLevel: false,
+      }));
+    }
+  }
+
+  /**
+   * @private
+   * @param {SerializedBlockGraph} graph
+   */
+  transpileReturns(graph) {
+    for (const returnBlock of graph.getBlocks([FunctionBlockType.RETURN])) {
+      returnBlock.assign({
+        opcode: "data_insertatlist",
+        inputs: {
+          ...returnBlock.ref.inputs,
+          INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
+        },
+        fields: { LIST: [Signature.STACK, Signature.STACK] },
+      });
+
+      returnBlock.insertAfter(graph.register({
+        opcode: "control_stop",
+        fields: { STOP_OPTION: ["this script", null] },
+        inputs: {},
+        mutation: {
+          children: [],
+          hasnext: "false",
+          tagName: "mutation",
+        },
+        shadow: false,
+        topLevel: false,
+      }));
+    }
+  }
+
+  /**
+   * @private
+   * @param {Serialized.Target} target
+   * @param {SerializedBlockGraph} graph
+   */
+  transpileCalls(target, graph) {
+    for (const block of graph.getBlocks([FunctionBlockType.CALL])) {
+      const anchor = block.getReportingAnchor();
+
+      if (anchor.isReporter()) {
+        graph.deleteTree(anchor);
+        continue;
+      }
+
+      const scope = anchor.getScope();
+      if (scope?.ref.mutation.warp === "true") {
+        const result = this.transpileStatement(anchor, graph);
+        const commentId = this.Blockly.utils.genUid();
+        target.comments[commentId] = {
+          blockId: result.id,
+          text: Signature.INLINE,
+          minimized: true,
+          height: 200,
+          width: 200,
+          x: 0,
+          y: 0,
+        };
+        result.ref.comment = commentId;
+      } else {
+        const copy = this.atomicizeStatement(anchor, graph, scope);
+        this.transpileStatement(copy, graph);
+      }
+    }
+  }
+
+  /**
+   * @private
+   * @param {RegisteredBlock} block
+   * @param {SerializedBlockGraph} graph
+   * @param {{ counter: number }} [ctx]
+   * @returns {RegisteredBlock[]}
+   */
+  getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
+    if (block.ref.opcode === FunctionBlockType.CALL) {
+      const copy = block.copy();
+      block.assign({
+        opcode: "data_itemoflist",
+        mutation: undefined,
+        fields: { LIST: [Signature.STACK, Signature.STACK] },
+        inputs: {
+          INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
+        },
+      });
+      return [copy];
+    }
+
+    /** @type {string[]} */
+    const argumentIds = [
+      ...(block.getBlockDefinition()
+        .args0?.filter(({ type }) => type === "input_value")
+        .map(({ name }) => name) ?? []),
+      ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
+    ];
+
+    const inputBlocks = argumentIds
+      .map((argId) => block.ref.inputs[argId])
+      .filter(Boolean)
+      .map(([, input]) => {
+        if (typeof input !== "string") return;
+        return graph.getBlock(input);
+      })
+      .filter(Boolean);
+
+    return inputBlocks.flatMap((b) => this.getAndReplaceCalls(b, graph, ctx));
+  }
+
+  /**
+   * @private
+   * @param {RegisteredBlock} stmt
+   * @param {SerializedBlockGraph} graph
+   * @returns {RegisteredBlock | undefined}
+   */
+  transpileStatement(stmt, graph) {
+    const calls = this.getAndReplaceCalls(stmt, graph);
+    if (calls.length === 0) return;
+
+    if (stmt.isTopLevel()) {
+      const [firstCall] = calls;
+      firstCall.assign({
+        x: stmt.ref.x,
+        y: stmt.ref.y,
+        topLevel: true,
+      });
+      stmt.assign({ topLevel: false, x: undefined, y: undefined });
+    }
+
+    for (const call of calls) {
+      call.assign({
+        opcode: "procedures_call",
+        mutation: {
+          ...call.ref.mutation,
+          proccode: Signature.FUNCTION + call.ref.mutation.proccode,
+        },
+      });
+      stmt.insertBefore(call);
+    }
+
+    const isCall =
+      stmt.ref.opcode === "procedures_call" && stmt.ref.mutation.proccode.startsWith(Signature.FUNCTION);
+    const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields.LIST[0] === Signature.STACK;
+
+    const deleter = graph.register({
+      opcode: "data_deleteoflist",
+      fields: { LIST: [Signature.STACK, Signature.STACK] },
+      inputs: {
+        INDEX: [InputType.SameShadow, [InputType.IntegerNumber, isCall || isStackPush ? "2" : "1"]],
+      },
+      shadow: false,
+      topLevel: false,
+    });
+
+    if (calls.length > 1) {
+      const repeater = graph.register({
+        opcode: "control_repeat",
+        fields: {},
+        inputs: {
+          TIMES: [InputType.SameShadow, [InputType.WholeNumber, String(calls.length)]],
+          SUBSTACK: [InputType.NoShadow, deleter.id],
+        },
+        shadow: false,
+        topLevel: false,
+      });
+      deleter.ref.parent = repeater.id;
+      stmt.insertAfter(repeater);
+    } else {
+      stmt.insertAfter(deleter);
+    }
+
+    let startingCall = null;
+    for (const call of calls) {
+      const subcall = this.transpileStatement(call, graph);
+      if (startingCall === null) startingCall = subcall;
+    }
+    return startingCall ?? calls[0];
+  }
+
+  /**
+   * @private
+   * @param {RegisteredBlock} stmt
+   * @param {SerializedBlockGraph} graph
+   * @param {RegisteredBlock} [scope]
+   * @returns {RegisteredBlock}
+   */
+  atomicizeStatement(stmt, graph, scope) {
+    const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""}`;
+    const argumentids = scope?.ref.mutation.argumentids ?? "[]";
+
+    const prototype = graph.register({
+      opcode: "procedures_prototype",
+      inputs: {},
+      fields: {},
+      shadow: true,
+      topLevel: false,
+      mutation: {
+        tagName: "mutation",
+        children: [],
+        proccode,
+        argumentids,
+        argumentnames: scope?.ref.mutation.argumentnames ?? "[]",
+        argumentdefaults: scope?.ref.mutation.argumentdefaults ?? "[]",
+        warp: "true",
+      },
+    });
+    prototype.copyInputs(scope);
+
+    const definition = graph.register({
+      opcode: "procedures_definition",
+      inputs: { custom_block: [1, prototype.id] },
+      fields: {},
+      shadow: false,
+      topLevel: true,
+      x: 0,
+      y: 0,
+    });
+
+    const copy = stmt.copy();
+    definition.insertAfter(copy);
+
+    stmt.assign({
+      opcode: "procedures_call",
+      comment: undefined,
+      inputs: {},
+      fields: {},
+      shadow: false,
+      mutation: {
+        tagName: "mutation",
+        children: [],
+        proccode,
+        argumentids,
+        warp: "true",
+      },
+    });
+    stmt.copyInputs(scope);
+
+    return copy;
+  }
 }
 
 /** @param {FunctionContext} context */
 export function patchSerialization({ Blockly, vm }) {
-
+  const transpiler = new SerializeTransformer({ Blockly, vm });
   const vmPrototype = Object.getPrototypeOf(vm);
   const originalToJSON = vmPrototype.toJSON;
-  /**
-   * @param {string} optTargetId
-   */
-  vmPrototype.toJSON = function (optTargetId) {
-    const json = originalToJSON.call(this, optTargetId);
+  vmPrototype.toJSON = /** @param {string} [optTargetId] */ function (optTargetId) {
+    const json = originalToJSON.call(this.vm, optTargetId);
     /** @type {Serialized.Project | Serialized.Sprite} */
     const parsed = JSON.parse(json);
     const targets = "blocks" in parsed ? [parsed] : parsed.targets;
     for (const target of targets) {
-      const graph = new SerializedBlockGraph({
-        Blockly,
-        blocks: target.blocks,
-      });
-
-      for (const prototype of graph.getBlocks([FunctionBlockType.PROTOTYPE])) {
-        prototype.assign({
-          opcode: "procedures_prototype",
-          mutation: {
-            ...prototype.ref.mutation,
-            proccode: Signature.FUNCTION + prototype.ref.mutation.proccode,
-          },
-        });
-      }
-
-      for (const definition of graph.getBlocks([FunctionBlockType.DEFINITION])) {
-
-        // define stack list if any definitions are present
-        target.lists[Signature.STACK] = [Signature.STACK, []];
-
-        definition.assign({ opcode: "procedures_definition" });
-
-        replaceStopScripts(definition);
-
-        const lastBlock = definition.tail();
-
-        // check if last block is a cap block
-        if ([
-          "control_delete_this_clone",
-          "control_forever",
-          FunctionBlockType.RETURN,
-          "control_stop",
-        ].includes(lastBlock.ref.opcode)) continue;
-        if (lastBlock.ref.mutation?.hasnext === "false") continue;
-
-        // insert implicit return block after last block
-        lastBlock.insertAfter(graph.register({
-          opcode: "data_insertatlist",
-          inputs: {
-            ITEM: [InputType.SameShadow, [InputType.Text, ""]],
-            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
-          },
-          fields: {
-            LIST: [Signature.STACK, Signature.STACK],
-          },
-          shadow: false,
-          topLevel: false,
-        }));
-      }
-
-      for (const returnBlock of graph.getBlocks([FunctionBlockType.RETURN])) {
-        returnBlock.assign({
-          opcode: "data_insertatlist",
-          inputs: {
-            ...returnBlock.ref.inputs, // inherit ITEM
-            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
-          },
-          fields: { LIST: [Signature.STACK, Signature.STACK] },
-        });
-
-        returnBlock.insertAfter(graph.register({
-          opcode: "control_stop",
-          fields: {
-            STOP_OPTION: ["this script", null],
-          },
-          inputs: {},
-          mutation: {
-            children: [],
-            hasnext: "false",
-            tagName: "mutation",
-          },
-          shadow: false,
-          topLevel: false,
-        }));
-      }
-
-      // need to handle calls after transpiling returns
-      for (const block of graph.getBlocks([FunctionBlockType.CALL])) {
-        const anchor = block.getReportingAnchor();
-
-        if (anchor.isReporter()) {
-          // TODO handle top level expressions
-          graph.deleteTree(anchor);
-          continue;
-        }
-
-
-        /**
-         * @param {RegisteredBlock} block
-         * @param {{counter: number}} [ctx] - Context object for the call number.
-         * @returns {RegisteredBlock[]}
-         */
-        function getAndReplaceCalls(block, ctx = { counter: 1 }) {
-          if (block.ref.opcode === FunctionBlockType.CALL) {
-            const copy = block.copy();
-            block.assign({
-              opcode: "data_itemoflist",
-              mutation: undefined,
-              fields: {
-                LIST: [Signature.STACK, Signature.STACK],
-              },
-              inputs: {
-                INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
-              },
-            });
-            return [copy];
-          }
-
-          /** @type {string[]} */
-          const argumentIds = [
-            // Get argument ids from definition
-            // In scratch, args1+ only show up on control blocks with substacks and never contain inputs
-            ...(block.getBlockDefinition()
-              .args0?.filter(({ type }) => type === "input_value")
-              .map(({ name }) => name) ?? []),
-            // get argument ids from mutation
-            ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
-          ];
-
-          const inputBlocks = argumentIds
-            .map((argId) => block.ref.inputs[argId])
-            .filter(Boolean)
-            .map(([, input]) => {
-              if (typeof input !== "string") return;
-              return graph.getBlock(input);
-            })
-            .filter(Boolean);
-
-          return inputBlocks.flatMap((block) => getAndReplaceCalls(block, ctx));
-        }
-
-        /**
-         * Unfold all function calls to procedure calls from a statement
-         * @param {RegisteredBlock} stmt
-         * @return {RegisteredBlock | undefined} - first function call
-         */
-        function transpileStatement(stmt) {
-          const calls = getAndReplaceCalls(stmt);
-          if (calls.length === 0) return;
-
-          if (stmt.isTopLevel()) {
-            const [firstCall] = calls;
-            firstCall.assign({
-              x: stmt.ref.x,
-              y: stmt.ref.y,
-              topLevel: true,
-            });
-            stmt.assign({
-              topLevel: false,
-              x: undefined,
-              y: undefined,
-            });
-          }
-
-          for (const call of calls) {
-            call.assign({
-              opcode: "procedures_call",
-              mutation: {
-                ...call.ref.mutation,
-                proccode: Signature.FUNCTION + call.ref.mutation.proccode,
-              },
-            });
-            stmt.insertBefore(call);
-          }
-
-          const isCall =
-            stmt.ref.opcode === "procedures_call" && stmt.ref.mutation.proccode.startsWith(Signature.FUNCTION);
-          const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields.LIST[0] === Signature.STACK;
-
-          const deleter = graph.register({
-            opcode: "data_deleteoflist",
-            fields: { LIST: [Signature.STACK, Signature.STACK] },
-            // if the stmt we are transpiling is a fn call, we reserve index 1 for the return value
-            inputs: { INDEX: [InputType.SameShadow, [InputType.IntegerNumber, isCall || isStackPush ? "2" : "1"]] },
-            shadow: false,
-            topLevel: false,
-          });
-
-          // if there is more than one call replace deleter with repeater
-          if (calls.length > 1) {
-            const repeater = graph.register({
-              opcode: "control_repeat",
-              fields: {},
-              inputs: {
-                TIMES: [InputType.SameShadow, [InputType.WholeNumber, String(calls.length)]],
-                SUBSTACK: [InputType.NoShadow, deleter.id],
-              },
-              shadow: false,
-              topLevel: false,
-            })
-            deleter.ref.parent = repeater.id;
-
-            stmt.insertAfter(repeater);
-          } else {
-            stmt.insertAfter(deleter);
-          }
-
-          let startingCall = null;
-          for (const call of calls) {
-            const subcall = transpileStatement(call);
-            if (startingCall === null) startingCall = subcall;
-          }
-          return startingCall ?? calls[0];
-        }
-
-        /**
-         * converts a statement into a atomic procedure call
-         * @param {RegisteredBlock} stmt
-         * @param {RegisteredBlock} [scope]
-         * @returns {RegisteredBlock} - the copied statement with atomic procedure
-         */
-        function atomicizeStatement(stmt, scope) {
-          const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""
-            }`;
-
-          // copy argument reporters
-          const argumentids = scope?.ref.mutation.argumentids ?? "[]";
-
-          const prototype = graph.register({
-            opcode: "procedures_prototype",
-            inputs: {},
-            fields: {},
-            shadow: true,
-            topLevel: false,
-            mutation: {
-              tagName: "mutation",
-              children: [],
-              proccode,
-              argumentids,
-              argumentnames: scope?.ref.mutation.argumentnames ?? "[]",
-              argumentdefaults: scope?.ref.mutation.argumentdefaults ?? "[]",
-              warp: "true",
-            },
-          });
-
-          prototype.copyInputs(scope);
-
-          const definition = graph.register({
-            opcode: "procedures_definition",
-            inputs: {
-              custom_block: [1, prototype.id],
-            },
-            fields: {},
-            shadow: false,
-            topLevel: true,
-            // TODO determine smartly where to place definition
-            x: 0,
-            y: 0,
-          });
-
-          // copy the statement and insert it after the definition
-          const copy = stmt.copy();
-          definition.insertAfter(copy);
-
-          // convert statement to atomic call
-          stmt.assign({
-            opcode: "procedures_call",
-            comment: undefined,
-            inputs: {},
-            fields: {},
-            shadow: false,
-            mutation: {
-              tagName: "mutation",
-              children: [],
-              proccode,
-              argumentids,
-              warp: "true",
-            },
-          });
-
-          stmt.copyInputs(scope);
-
-          return copy;
-        }
-
-        const scope = anchor.getScope();
-        if (scope?.ref.mutation.warp === "true") {
-          // we can inline the call
-          const block = transpileStatement(anchor);
-          if (!block) {
-            console.warn("No block id returned from transpileStatement, skipping inline comment");
-            continue;
-          }
-          const commentId = Blockly.utils.genUid();
-          target.comments[commentId] = {
-            blockId: block.id,
-            text: Signature.INLINE,
-            minimized: true,
-            height: 200,
-            width: 200,
-            x: 0,
-            y: 0,
-          };
-          block.ref.comment = commentId;
-        } else {
-          const copy = atomicizeStatement(anchor, scope);
-          transpileStatement(copy);
-        }
-      }
-      graph.validate();
+      transpiler.transpileTarget(target);
     }
-
     return JSON.stringify(parsed);
   };
 }
