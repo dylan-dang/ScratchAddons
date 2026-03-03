@@ -1,5 +1,4 @@
 import { FunctionBlockType, Signature } from "./constants.js";
-import { deepMerge } from "./utils.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
@@ -172,12 +171,14 @@ class RegisteredBlock {
    */
   replaceInputReferences(previous, replacement) {
     for (const input of Object.values(this.ref.inputs)) {
-      const [type, refId] = input;
+      const [type] = input;
       switch (type) {
+        case InputType.DifferentShadow:
+          if (input[2] === previous.id) input[2] = replacement.id;
+        // fallthrough
         case InputType.SameShadow:
         case InputType.NoShadow:
-        case InputType.DifferentShadow:
-          if (refId === previous.id) input[1] = replacement.id;
+          if (input[1] === previous.id) input[1] = replacement.id;
           break;
       }
     }
@@ -219,10 +220,10 @@ class RegisteredBlock {
   }
 
   /**
-   * @param {import("./utils.js").DeepPartial<Serialized.Block>} partial
+   * @param {Partial<Serialized.Block>} partial
    */
   assign(partial) {
-    this.ref = deepMerge(this.ref, partial);
+    Object.assign(this.ref, partial);
   }
 
   isReporter() {
@@ -305,11 +306,17 @@ class RegisteredBlock {
   }
 
   /**
-   * clone this block and add it to the graph detached
+   * copy this block and redirect all inputs to the new block
+   * The orignal block should not use inputs after cloning
    * @returns {RegisteredBlock}
    */
-  clone() {
-    return this.graph.register(structuredClone(this.ref));
+  copy() {
+    const copy = this.graph.register(structuredClone(this.ref));
+    // redirect all inputs to the new block
+    for (const inputBlock of this.getInputBlocks()) {
+      inputBlock.ref.parent = this.id;
+    }
+    return copy;
   }
 
   /**
@@ -328,12 +335,12 @@ class RegisteredBlock {
             this.ref.inputs[name] = input;
             break;
           }
-          const clone = this.graph.getBlock(reference).clone();
+          const copy = this.graph.getBlock(reference).copy();
           /** @type {Serialized.Primitive} */
-          const cloneRef = [...input];
-          cloneRef[1] = clone.id;
+          const copyRef = [...input];
+          copyRef[1] = copy.id;
 
-          this.ref.inputs[name] = cloneRef;
+          this.ref.inputs[name] = copyRef;
           break;
         default:
           this.ref.inputs[name] = input;
@@ -348,6 +355,23 @@ class RegisteredBlock {
     const [, prototypeId] = head.ref.inputs.custom_block;
     if (typeof prototypeId !== "string") throw new Error("Definition prototype was not a string");
     return this.graph.getBlock(prototypeId);
+  }
+
+  /**
+   * @returns {IterableIterator<RegisteredBlock>}
+   */
+  *getInputBlocks() {
+    for (const input of Object.values(this.ref.inputs)) {
+      const [type] = input;
+      switch (type) {
+        case InputType.DifferentShadow:
+          if (typeof input[2] === "string") yield this.graph.getBlock(input[2]);
+        // fallthrough
+        case InputType.SameShadow:
+          if (typeof input[1] === "string") yield this.graph.getBlock(input[1]);
+          break;
+      }
+    }
   }
 }
 
@@ -396,8 +420,131 @@ function getBlockDefinition(Blockly, opcode) {
   return ctx.json;
 }
 
+/**
+ * Sanity check the block graph after transpilation:
+ * - No dangling references (all referenced block IDs exist)
+ * - Every block is either top-level or referenced (no orphaned blocks)
+ * - If block B is next on block A, then B.parent === A
+ * - If block A has parent B, then B has A as next or in one of its inputs
+ *   (a block can be parent of multiple children via next and/or inputs)
+ *
+ * @param {Serialized.Target["blocks"]} blocks
+ */
+function sanityCheckBlockGraph(blocks) {
+  const blockIds = new Set();
+  /** @type {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} */
+  const referencesByBlockId = new Map();
 
+  for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
+    if (Array.isArray(blockOrPrimitive)) continue;
+    blockIds.add(id);
+  }
 
+  /**
+   * @param {string} refId
+   * @param {string} sourceId
+   * @param {"parent" | "next" | "input"} kind
+   */
+  function recordReference(refId, sourceId, kind) {
+    if (typeof refId !== "string" || !refId) return;
+    const refs = referencesByBlockId.get(refId) ?? [];
+    refs.push({ source: sourceId, kind });
+    referencesByBlockId.set(refId, refs);
+  }
+
+  for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
+    if (Array.isArray(blockOrPrimitive)) continue;
+    const block = /** @type {Serialized.Block} */ (blockOrPrimitive);
+
+    if (block.parent) recordReference(block.parent, id, "parent");
+    if (block.next) recordReference(block.next, id, "next");
+
+    for (const input of Object.values(block.inputs ?? {})) {
+      if (!input || typeof input[0] !== "number") continue;
+      const [type] = input;
+      switch (type) {
+        case InputType.SameShadow:
+        case InputType.NoShadow:
+          if (typeof input[1] === "string") recordReference(input[1], id, "input");
+          break;
+        case InputType.DifferentShadow:
+          if (typeof input[1] === "string") recordReference(input[1], id, "input");
+          if (typeof input[2] === "string") recordReference(input[2], id, "input");
+          break;
+      }
+    }
+  }
+
+  // Check 1: No dangling references
+  for (const [refId, refs] of referencesByBlockId) {
+    if (!blockIds.has(refId)) {
+      console.warn(
+        `Sanity check failed: dangling reference to block "${refId}" from ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
+      );
+    }
+  }
+
+  // Check 2: Every block is either top-level or referenced
+  for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
+    if (Array.isArray(blockOrPrimitive)) continue;
+    const block = /** @type {Serialized.Block} */ (blockOrPrimitive);
+    if (block.topLevel) continue;
+    if (referencesByBlockId.has(id)) continue;
+    console.warn(
+      `Sanity check failed: block "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`
+    );
+  }
+
+  // Check 3 & 4: next/parent and parent/next|input consistency
+  for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
+    if (Array.isArray(blockOrPrimitive)) continue;
+    const block = /** @type {Serialized.Block} */ (blockOrPrimitive);
+
+    // If A has next B, then B must have parent A
+    if (block.next) {
+      const nextBlock = blocks[block.next];
+      if (!nextBlock || Array.isArray(nextBlock)) continue; // skip if dangling or primitive
+      const nextRef = /** @type {Serialized.Block} */ (nextBlock);
+      if (nextRef.parent !== id) {
+        console.warn(
+          `Sanity check failed: block "${id}" has next="${block.next}", but block "${block.next}" has parent="${nextRef.parent}" (expected "${id}")`
+        );
+      }
+    }
+
+    // If A has parent B, then B must have A as next or in an input
+    if (block.parent) {
+      const parentBlock = blocks[block.parent];
+      if (!parentBlock || Array.isArray(parentBlock)) continue; // skip if dangling or primitive
+      const parentRef = /** @type {Serialized.Block} */ (parentBlock);
+
+      let found = parentRef.next === id;
+
+      if (!found) {
+        for (const input of Object.values(parentRef.inputs ?? {})) {
+          if (!input || typeof input[0] !== "number") continue;
+          const [type] = input;
+          switch (type) {
+            case InputType.SameShadow:
+            case InputType.NoShadow:
+              if (input[1] === id) found = true;
+              break;
+            case InputType.DifferentShadow:
+              if (input[1] === id || input[2] === id) found = true;
+              break;
+          }
+          if (found) break;
+        }
+      }
+
+      if (!found) {
+        console.warn(
+          `Sanity check failed: block "${id}" has parent="${block.parent}", but parent block does not reference "${id}" in next or inputs`
+        );
+      }
+    }
+  }
+}
 
 /** @param {FunctionContext} context */
 export function patchSerialization({ Blockly, vm }) {
@@ -422,6 +569,7 @@ export function patchSerialization({ Blockly, vm }) {
         prototype.assign({
           opcode: "procedures_prototype",
           mutation: {
+            ...prototype.ref.mutation,
             proccode: Signature.FUNCTION + prototype.ref.mutation.proccode,
           },
         });
@@ -466,6 +614,7 @@ export function patchSerialization({ Blockly, vm }) {
         returnBlock.assign({
           opcode: "data_insertatlist",
           inputs: {
+            ...returnBlock.ref.inputs, // inherit ITEM
             INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
           },
           fields: { LIST: [Signature.STACK, Signature.STACK] },
@@ -505,10 +654,7 @@ export function patchSerialization({ Blockly, vm }) {
          */
         function getAndReplaceCalls(block, ctx = { counter: 1 }) {
           if (block.ref.opcode === FunctionBlockType.CALL) {
-            const copy = graph.register({
-              ...block.ref,
-              comment: undefined,
-            });
+            const copy = block.copy();
             block.assign({
               opcode: "data_itemoflist",
               mutation: undefined,
@@ -572,6 +718,7 @@ export function patchSerialization({ Blockly, vm }) {
             call.assign({
               opcode: "procedures_call",
               mutation: {
+                ...call.ref.mutation,
                 proccode: Signature.FUNCTION + call.ref.mutation.proccode,
               },
             });
@@ -622,13 +769,13 @@ export function patchSerialization({ Blockly, vm }) {
          * converts a statement into a atomic procedure call
          * @param {RegisteredBlock} stmt
          * @param {RegisteredBlock} [scope]
-         * @returns {RegisteredBlock} - the cloned statement with atomic procedure
+         * @returns {RegisteredBlock} - the copied statement with atomic procedure
          */
         function atomicizeStatement(stmt, scope) {
           const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""
             }`;
 
-          // clone argument reporters
+          // copy argument reporters
           const argumentids = scope?.ref.mutation.argumentids ?? "[]";
 
           const prototype = graph.register({
@@ -663,9 +810,9 @@ export function patchSerialization({ Blockly, vm }) {
             y: 0,
           });
 
-          // clone the statement and insert it after the definition
-          const clone = stmt.clone();
-          definition.insertAfter(clone);
+          // copy the statement and insert it after the definition
+          const copy = stmt.copy();
+          definition.insertAfter(copy);
 
           // convert statement to atomic call
           stmt.assign({
@@ -685,17 +832,17 @@ export function patchSerialization({ Blockly, vm }) {
 
           stmt.copyInputs(scope);
 
-          return clone;
+          return copy;
         }
 
         const scope = anchor.getScope();
         if (scope?.ref.mutation.warp === "true") {
           // we can inline the call
           const block = transpileStatement(anchor);
-          // if (!blockId) {
-          //   console.warn("No block id returned from transpileStatement, skipping inline comment");
-          //   continue;
-          // }
+          if (!block) {
+            console.warn("No block id returned from transpileStatement, skipping inline comment");
+            continue;
+          }
           const commentId = Blockly.utils.genUid();
           target.comments[commentId] = {
             blockId: block.id,
@@ -708,12 +855,16 @@ export function patchSerialization({ Blockly, vm }) {
           };
           block.ref.comment = commentId;
         } else {
-          const clone = atomicizeStatement(anchor, scope);
-          transpileStatement(clone);
+          const copy = atomicizeStatement(anchor, scope);
+          transpileStatement(copy);
         }
       }
     }
-    console.log("transpiled", parsed);
+
+    for (const target of targets) {
+      sanityCheckBlockGraph(target.blocks);
+    }
+
     return JSON.stringify(parsed);
   };
 }
