@@ -1,61 +1,406 @@
 import { FunctionBlockType, Signature } from "./constants.js";
+import { deepMerge } from "./utils.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
-/** @param {FunctionContext} context */
-export function patchSerialization(context) {
-  const { Blockly, vm } = context;
+/**
+ * @typedef {Object} BlockJsonInputValueArg
+ * @prop {"input_value"} type
+ * @prop {string} name
+ * @prop {string} [check]
+ */
+
+/**
+ * @typedef {Object} BlockJson
+ * @prop {string} [message0]
+ * @prop {string} [message1]
+ * @prop {string} [message2]
+ * @prop {string} [message3]
+ * @prop {BlockJsonInputValueArg[]} [args0]
+ * @prop {BlockJsonInputValueArg[]} [args1]
+ * @prop {BlockJsonInputValueArg[]} [args2]
+ * @prop {BlockJsonInputValueArg[]} [args3]
+ * @prop {string} [category]
+ * @prop {string[]} [extensions]
+ * @prop {string} [output]
+ * @prop {string} [colour]
+ * @prop {string} [colourSecondary]
+ * @prop {string} [colourTertiary]
+ * @prop {string} [colourQuaternary]
+ * @prop {boolean} [inputsInline]
+ * @prop {string|string[]?} [previousStatement]
+ * @prop {string|string[]?} [nextStatement]
+ * @prop {string} [tooltip]
+ * @prop {boolean} [enableContextMenu]
+ * @prop {string} [helpUrl]
+ * @prop {any} [mutator]
+ * @prop {number} [outputShape]
+ * @prop {boolean} [checkboxInFlyout]
+ */
+
+
+
+/** @enum {Serialized.Primitive[0]} */
+const InputType = /** @type {const} */ ({
+  SameShadow: 1,
+  NoShadow: 2,
+  DifferentShadow: 3,
+  MathNumber: 4,
+  PositiveNumber: 5,
+  WholeNumber: 6,
+  IntegerNumber: 7,
+  AngleNumber: 8,
+  ColorPicker: 9,
+  Text: 10,
+  Broadcast: 11,
+  Variable: 12,
+  List: 13,
+});
+
+class SerializedBlockGraph {
   /**
-   * @typedef {Object} BlockJsonInputValueArg
-   * @prop {"input_value"} type
-   * @prop {string} name
-   * @prop {string} [check]
+   * @param {{
+   *   blocks: Serialized.Target["blocks"],
+   *   Blockly: ScratchBlocks.Blockly
+   * }} dependencies
    */
+  constructor(dependencies) {
+    this.blocks = dependencies.blocks;
+    this.Blockly = dependencies.Blockly;
+  }
 
   /**
-   * @typedef {Object} BlockJson
-   * @prop {string} [message0]
-   * @prop {string} [message1]
-   * @prop {string} [message2]
-   * @prop {string} [message3]
-   * @prop {BlockJsonInputValueArg[]} [args0]
-   * @prop {BlockJsonInputValueArg[]} [args1]
-   * @prop {BlockJsonInputValueArg[]} [args2]
-   * @prop {BlockJsonInputValueArg[]} [args3]
-   * @prop {string} [category]
-   * @prop {string[]} [extensions]
-   * @prop {string} [output]
-   * @prop {string} [colour]
-   * @prop {string} [colourSecondary]
-   * @prop {string} [colourTertiary]
-   * @prop {string} [colourQuaternary]
-   * @prop {boolean} [inputsInline]
-   * @prop {string|string[]?} [previousStatement]
-   * @prop {string|string[]?} [nextStatement]
-   * @prop {string} [tooltip]
-   * @prop {boolean} [enableContextMenu]
-   * @prop {string} [helpUrl]
-   * @prop {any} [mutator]
-   * @prop {number} [outputShape]
-   * @prop {boolean} [checkboxInFlyout]
+   * @param {Omit<Serialized.Block, "parent" | "next">} unlinkedBlock
+   * @returns {RegisteredBlock}
    */
+  register(unlinkedBlock) {
+    const blockId = this.Blockly.utils.genUid();
+    /** @type {Serialized.Block} */
+    const block = { ...unlinkedBlock, parent: null, next: null };
+    this.blocks[blockId] = block;
+    return new RegisteredBlock(block, blockId, this);
+  }
 
   /**
-   * @param {string} opcode
+   * @private
+   * @param {string | Serialized.Primitive} referenceId
+   */
+  deleteTreeReference(referenceId) {
+    if (typeof referenceId !== "string") return;
+    this.deleteTree(this.getBlock(referenceId));
+  }
+
+  /**
+   * @param {RegisteredBlock} block
+   */
+  deleteTree(block) {
+    delete this.blocks[block.id];
+    /**
+     * @param {string | Serialized.Primitive} refId
+     */
+    for (const input of Object.values(block.ref.inputs)) {
+      const [type] = input;
+      switch (type) {
+        case InputType.DifferentShadow:
+          this.deleteTreeReference(input[2]);
+        // fallthrough
+        case InputType.SameShadow:
+        case InputType.NoShadow:
+          this.deleteTreeReference(input[1]);
+      }
+    }
+  }
+
+  /**
+   * @param {Iterable<string>} [opcodes]
+   * @returns {IterableIterator<RegisteredBlock>}
+   */
+  *getBlocks(opcodes) {
+    const opcodesSet = new Set(opcodes);
+    for (const [id, block] of Object.entries(this.blocks)) {
+      if (Array.isArray(block)) continue;
+      if (opcodes && !opcodesSet.has(block.opcode)) continue;
+      yield new RegisteredBlock(block, id, this);
+    }
+  }
+
+  /**
+   * @param {string} id
+   * @returns {RegisteredBlock | undefined}
+   */
+  getBlock(id) {
+    const block = this.blocks[id];
+    if (!block) return undefined;
+    if (Array.isArray(block)) throw Error("Unexpected primitive block");
+    return new RegisteredBlock(block, id, this);
+  }
+}
+
+class RegisteredBlock {
+  /**
+   * @param {Serialized.Block} ref
+   * @param {string} id
+   * @param {SerializedBlockGraph} graph
+   */
+  constructor(ref, id, graph) {
+    this.ref = ref;
+    this.graph = graph;
+    this.id = id;
+  }
+
+  /**
+   * @private
+   * @param {RegisteredBlock} parent
+   */
+  setParent(parent) {
+    this.ref.parent = parent.id;
+    parent.ref.next = this.id;
+  }
+
+  /**
+   * @private
+   * @param {RegisteredBlock} next
+   */
+  setNext(next) {
+    this.ref.next = next.id;
+    next.ref.parent = this.id;
+  }
+
+  /**
+   * @param {RegisteredBlock} previous
+   * @param {RegisteredBlock} replacement
+   */
+  replaceInputReferences(previous, replacement) {
+    for (const input of Object.values(this.ref.inputs)) {
+      const [type, refId] = input;
+      switch (type) {
+        case InputType.SameShadow:
+        case InputType.NoShadow:
+        case InputType.DifferentShadow:
+          if (refId === previous.id) input[1] = replacement.id;
+          break;
+      }
+    }
+  }
+
+  /**
+   * @returns {RegisteredBlock | undefined} parent
+   */
+  getParent() {
+    return this.graph.getBlock(this.ref.parent);
+  }
+
+  /**
+   * @returns {RegisteredBlock | undefined} next
+   */
+  getNext() {
+    return this.graph.getBlock(this.ref.next);
+  }
+
+  /**
+   * @param {RegisteredBlock} other
+   */
+  insertAfter(other) {
+    const next = this.getNext();
+    this.setNext(other);
+    if (next) next.setParent(other);
+  }
+
+  /**
+   * @param {RegisteredBlock} other
+   */
+  insertBefore(other) {
+    const parent = this.getParent();
+    this.setParent(other);
+    if (parent) {
+      parent.replaceInputReferences(this, other); // handles branching blocks with substacks
+      parent.setNext(other);
+    }
+  }
+
+  /**
+   * @param {import("./utils.js").DeepPartial<Serialized.Block>} partial
+   */
+  assign(partial) {
+    this.ref = deepMerge(this.ref, partial);
+  }
+
+  isReporter() {
+    const json = this.getBlockDefinition();
+    return !!json.outputShape || !!json.output || json.extensions?.some((ext) => ["output_boolean", "output_number", "output_string"].includes(ext));
+  }
+
+  /**
    * @returns {BlockJson}
    */
-  function getBlockDefinition(opcode) {
-    const ctx = {
-      /** @type {BlockJson} */
-      json: null,
-      /** @param {BlockJson} json */
-      jsonInit(json) {
-        this.json = json;
-      },
-    };
-    Blockly.Blocks[opcode].init.call(ctx);
-    return ctx.json;
+  getBlockDefinition() {
+    return getBlockDefinition(this.graph.Blockly, this.ref.opcode);
   }
+
+  /**
+   * get the last block in the chain of blocks
+   * @returns {RegisteredBlock}
+   */
+  tail() {
+    /** @type {RegisteredBlock} */
+    let tail = this;
+    while (tail.ref.next) {
+      tail = tail.getNext();
+    }
+    return tail;
+  }
+
+  /**
+   * get the first block in the chain of blocks
+   * @returns {RegisteredBlock}
+   */
+  head() {
+    /** @type {RegisteredBlock} */
+    let head = this;
+    while (head.ref.parent) {
+      head = head.getParent();
+    }
+    return head;
+  }
+
+  /**
+   * Returns the nearest ancestor that either is a statement or a top-level reporter block.
+   * @returns {RegisteredBlock}
+   */
+  getReportingAnchor() {
+    /** @type {RegisteredBlock} */
+    let anchor = this;
+    while (anchor.ref.parent && anchor.isReporter()) {
+      anchor = anchor.getParent();
+    }
+    return anchor;
+  }
+
+  /**
+   * delete the block and all its children
+   */
+  deleteTree() {
+    this.graph.deleteTree(this);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  isTopLevel() {
+    return this.ref.topLevel;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasNext() {
+    return !!this.ref.next;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasParent() {
+    return !!this.ref.parent;
+  }
+
+  /**
+   * clone this block and add it to the graph detached
+   * @returns {RegisteredBlock}
+   */
+  clone() {
+    return this.graph.register(structuredClone(this.ref));
+  }
+
+  /**
+   * shallow copy the inputs of another block to this block
+   * @param {RegisteredBlock} other
+   */
+  copyInputs(other) {
+    for (const [name, input] of Object.entries(other?.ref.inputs ?? {})) {
+      const [type, reference] = input;
+      switch (type) {
+        case InputType.SameShadow:
+        case InputType.NoShadow:
+        case InputType.DifferentShadow:
+          if (typeof reference !== "string") {
+            // this shouldn't happen
+            this.ref.inputs[name] = input;
+            break;
+          }
+          const clone = this.graph.getBlock(reference).clone();
+          /** @type {Serialized.Primitive} */
+          const cloneRef = [...input];
+          cloneRef[1] = clone.id;
+
+          this.ref.inputs[name] = cloneRef;
+          break;
+        default:
+          this.ref.inputs[name] = input;
+          break;
+      }
+    }
+  }
+
+  getScope() {
+    const head = this.head();
+    if (head.ref.opcode !== "procedures_definition") return undefined;
+    const [, prototypeId] = head.ref.inputs.custom_block;
+    if (typeof prototypeId !== "string") throw new Error("Definition prototype was not a string");
+    return this.graph.getBlock(prototypeId);
+  }
+}
+
+
+/**
+ * convert control_stop blocks to empty return blocks so that we can correct them
+ * @param {RegisteredBlock} block
+ */
+function replaceStopScripts(block) {
+  if (!block) return;
+
+  if (block.ref.opcode === "control_stop" && block.ref.fields.STOP_OPTION[0] === "this script") {
+    block.assign({
+      opcode: FunctionBlockType.RETURN,
+      mutation: undefined,
+      inputs: { ITEM: [InputType.SameShadow, [InputType.Text, ""]] },
+      fields: {},
+    });
+    return;
+  }
+
+  replaceStopScripts(block.getNext());
+  // handle branching blocks
+  for (const [name, [type, refId]] of Object.entries(block.ref.inputs)) {
+    if (!name.startsWith("SUBSTACK")) continue;
+    if (type > 3 || typeof refId !== "string") continue; // not a block reference
+    replaceStopScripts(block.graph.getBlock(refId));
+  }
+}
+
+/**
+ * @param {ScratchBlocks.Blockly} Blockly
+ * @param {string} opcode
+ * @returns {BlockJson}
+ */
+function getBlockDefinition(Blockly, opcode) {
+  const ctx = {
+    /** @type {BlockJson} */
+    json: null,
+    /** @param {BlockJson} json */
+    jsonInit(json) {
+      this.json = json;
+    },
+  };
+  Blockly.Blocks[opcode].init.call(ctx);
+  return ctx.json;
+}
+
+
+
+
+/** @param {FunctionContext} context */
+export function patchSerialization({ Blockly, vm }) {
 
   const vmPrototype = Object.getPrototypeOf(vm);
   const originalToJSON = vmPrototype.toJSON;
@@ -68,117 +413,65 @@ export function patchSerialization(context) {
     const parsed = JSON.parse(json);
     const targets = "blocks" in parsed ? [parsed] : parsed.targets;
     for (const target of targets) {
-      /**
-       *  @param {string} blockId
-       *  @returns {Serialized.Block | undefined}
-       */
-      function getNonprimitiveBlock(blockId) {
-        const block = target.blocks[blockId];
-        if (Array.isArray(block)) throw Error("Unexpected primitive block");
-        return block;
+      const graph = new SerializedBlockGraph({
+        Blockly,
+        blocks: target.blocks,
+      });
+
+      for (const prototype of graph.getBlocks([FunctionBlockType.PROTOTYPE])) {
+        prototype.assign({
+          opcode: "procedures_prototype",
+          mutation: {
+            proccode: Signature.FUNCTION + prototype.ref.mutation.proccode,
+          },
+        });
       }
 
-      /** @param {string} blockId */
-      function deleteTree(blockId) {
-        const block = target.blocks[blockId];
-        target.blocks[blockId] = undefined;
-        if (Array.isArray(block)) return;
-        for (const [type, input, maybeShadow] of Object.values(block.inputs)) {
-          if (type > 3) continue;
-          if (typeof input === "string") deleteTree(input);
-          if (typeof maybeShadow === "string") deleteTree(maybeShadow);
-        }
-      }
+      for (const definition of graph.getBlocks([FunctionBlockType.DEFINITION])) {
 
-      for (const [id, block] of Object.entries(target.blocks)) {
-        if (Array.isArray(block)) continue; // primitive
-        if (!block.opcode.startsWith("function")) continue;
-
-        // define stack list if any function block is detected
+        // define stack list if any definitions are present
         target.lists[Signature.STACK] = [Signature.STACK, []];
 
-        if (block.opcode === FunctionBlockType.PROTOTYPE) {
-          block.opcode = "procedures_prototype";
-          block.mutation.proccode = Signature.FUNCTION + block.mutation.proccode;
-          continue;
-        }
+        definition.assign({ opcode: "procedures_definition" });
 
-        if (block.opcode === FunctionBlockType.DEFINITION) {
-          block.opcode = "procedures_definition";
+        replaceStopScripts(definition);
 
-          /**
-           * @param {Serialized.Block} block
-           */
-          function replaceStopScript(block) {
-            if (!block) return;
+        const lastBlock = definition.tail();
 
-            if (block.opcode === "control_stop" && block.fields.STOP_OPTION[0] === "this script") {
-              block.opcode = FunctionBlockType.RETURN;
-              block.mutation = undefined;
-              block.inputs = { ITEM: [1, [10, ""]] };
-              block.fields = {};
-              return;
-            }
+        // check if last block is a cap block
+        if ([
+          "control_delete_this_clone",
+          "control_forever",
+          FunctionBlockType.RETURN,
+          "control_stop",
+        ].includes(lastBlock.ref.opcode)) continue;
+        if (lastBlock.ref.mutation?.hasnext === "false") continue;
 
-            replaceStopScript(getNonprimitiveBlock(block.next));
-            for (const [name, [type, refId]] of Object.entries(block.inputs)) {
-              if (!name.startsWith("SUBSTACK")) continue;
-              if (type > 3 || typeof refId !== "string") continue; // not a block reference
-              replaceStopScript(getNonprimitiveBlock(refId));
-            }
-          }
-
-          replaceStopScript(block);
-
-          let lastBlock = block;
-          let lastBlockId = id;
-          while (lastBlock.next) {
-            const id = lastBlock.next;
-            const nextBlock = getNonprimitiveBlock(id);
-            if (!nextBlock) break;
-            lastBlock = nextBlock;
-            lastBlockId = id;
-          }
-
-          // check for cap blocks
-          if (
-            lastBlock.opcode === "control_delete_this_clone" ||
-            lastBlock.opcode === "control_forever" ||
-            lastBlock.opcode === FunctionBlockType.RETURN ||
-            lastBlock.mutation?.hasnext === "false"
-          )
-            continue;
-
-          const implicitReturnId = Blockly.utils.genUid();
-          /** @type {Serialized.Block} */
-          const implicitReturn = {
-            opcode: "data_insertatlist",
-            next: null,
-            parent: lastBlockId,
-            inputs: {
-              ITEM: [1, [10, ""]],
-              INDEX: [1, [7, "1"]],
-            },
-            fields: {
-              LIST: [Signature.STACK, Signature.STACK],
-            },
-            shadow: false,
-            topLevel: false,
-          };
-          target.blocks[implicitReturnId] = implicitReturn;
-          lastBlock.next = implicitReturnId;
-        }
+        // insert implicit return block after last block
+        lastBlock.insertAfter(graph.register({
+          opcode: "data_insertatlist",
+          inputs: {
+            ITEM: [InputType.SameShadow, [InputType.Text, ""]],
+            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
+          },
+          fields: {
+            LIST: [Signature.STACK, Signature.STACK],
+          },
+          shadow: false,
+          topLevel: false,
+        }));
       }
 
-      // handle function returns
-      for (const [id, block] of Object.entries(target.blocks)) {
-        if (Array.isArray(block)) continue; // primitive
-        if (block.opcode !== FunctionBlockType.RETURN) continue;
-        block.opcode = "data_insertatlist";
-        block.inputs.INDEX = [1, [7, "1"]];
-        block.fields.LIST = [Signature.STACK, Signature.STACK];
-        block.next = Blockly.utils.genUid();
-        target.blocks[block.next] = {
+      for (const returnBlock of graph.getBlocks([FunctionBlockType.RETURN])) {
+        returnBlock.assign({
+          opcode: "data_insertatlist",
+          inputs: {
+            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
+          },
+          fields: { LIST: [Signature.STACK, Signature.STACK] },
+        });
+
+        returnBlock.insertAfter(graph.register({
           opcode: "control_stop",
           fields: {
             STOP_OPTION: ["this script", null],
@@ -189,64 +482,43 @@ export function patchSerialization(context) {
             hasnext: "false",
             tagName: "mutation",
           },
-          next: null,
-          parent: id,
           shadow: false,
           topLevel: false,
-        };
+        }));
       }
 
-      // handle calls after transpiling returns
-      for (const [id, block] of Object.entries(target.blocks)) {
-        if (Array.isArray(block)) continue; // primitive
-        if (block.opcode !== FunctionBlockType.CALL) continue;
+      // need to handle calls after transpiling returns
+      for (const block of graph.getBlocks([FunctionBlockType.CALL])) {
+        const anchor = block.getReportingAnchor();
 
-        const reporterExtensions = new Set(["output_boolean", "output_number", "output_string"]);
-        /** @param {BlockJson} json */
-        const isReporter = (json) =>
-          !!json.outputShape || !!json.output || json.extensions?.some((ext) => reporterExtensions.has(ext));
-
-        let highestAncestor = block;
-        /** contains either the closest statement or top-level reporter ancestor */
-        let closestStatementId = id;
-        let wasReporter = true;
-        while (highestAncestor.parent) {
-          const parentId = highestAncestor.parent;
-          if (!parentId) break;
-          highestAncestor = getNonprimitiveBlock(parentId);
-          if (wasReporter) {
-            closestStatementId = parentId;
-            wasReporter = isReporter(getBlockDefinition(highestAncestor.opcode));
-          }
-        }
-
-        if (wasReporter) {
-          deleteTree(closestStatementId);
-          continue;
+        if (anchor.isReporter()) {
           // TODO handle top level expressions
+          graph.deleteTree(anchor);
+          continue;
         }
 
-        // TODO handle loudness greater than hat workaround
 
         /**
-         * @param {Serialized.Block} block
+         * @param {RegisteredBlock} block
          * @param {{counter: number}} [ctx] - Context object for the call number.
-         * @returns {Serialized.Block[]}
+         * @returns {RegisteredBlock[]}
          */
         function getAndReplaceCalls(block, ctx = { counter: 1 }) {
-          if (block.opcode === FunctionBlockType.CALL) {
-            const copy = { ...block };
-            copy.comment = undefined;
-            copy.next = null;
-            copy.parent = null;
-            block.opcode = "data_itemoflist";
-            block.mutation = undefined;
-            block.fields = {
-              LIST: [Signature.STACK, Signature.STACK],
-            };
-            block.inputs = {
-              INDEX: [1, [7, String(ctx.counter++)]],
-            };
+          if (block.ref.opcode === FunctionBlockType.CALL) {
+            const copy = graph.register({
+              ...block.ref,
+              comment: undefined,
+            });
+            block.assign({
+              opcode: "data_itemoflist",
+              mutation: undefined,
+              fields: {
+                LIST: [Signature.STACK, Signature.STACK],
+              },
+              inputs: {
+                INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
+              },
+            });
             return [copy];
           }
 
@@ -254,21 +526,19 @@ export function patchSerialization(context) {
           const argumentIds = [
             // Get argument ids from definition
             // In scratch, args1+ only show up on control blocks with substacks and never contain inputs
-            ...(getBlockDefinition(block.opcode)
+            ...(block.getBlockDefinition()
               .args0?.filter(({ type }) => type === "input_value")
               .map(({ name }) => name) ?? []),
             // get argument ids from mutation
-            ...JSON.parse(block.mutation?.argumentids ?? "[]"),
+            ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
           ];
 
           const inputBlocks = argumentIds
-            .map((argId) => block.inputs[argId])
+            .map((argId) => block.ref.inputs[argId])
             .filter(Boolean)
             .map(([, input]) => {
               if (typeof input !== "string") return;
-              const block = target.blocks[input];
-              if (!block || Array.isArray(block)) return;
-              return block;
+              return graph.getBlock(input);
             })
             .filter(Boolean);
 
@@ -276,175 +546,94 @@ export function patchSerialization(context) {
         }
 
         /**
-         * @param {Serialized.Block | undefined} parent
-         * @param {string} stmtId
-         * @param {string} replacementId
+         * Unfold all function calls to procedure calls from a statement
+         * @param {RegisteredBlock} stmt
+         * @return {RegisteredBlock | undefined} - first function call
          */
-        function replaceChildStatementReference(parent, stmtId, replacementId) {
-          if (!parent) return;
-          // replace next block reference
-          if (parent.next === stmtId) parent.next = replacementId;
-          // replace any input_statements in inputs
-          for (const input of Object.values(parent.inputs)) {
-            const [type, refId] = input;
-            if (type <= 3 && refId === stmtId) input[1] = replacementId;
-          }
-        }
-
-        /**
-         * @param {string} nextId
-         * @param {Serialized.Block} block
-         */
-        function insertBefore(nextId, block) {
-          if (block.parent === null) throw new Error("block.parent must be null");
-          if (block.next === null) throw new Error("block.next must be null");
-          const nextBlock = getNonprimitiveBlock(nextId);
-          if (!nextBlock) throw new Error("tried to insert block before nonexistent block");
-          const parentId = nextBlock.parent;
-          const parentBlock = getNonprimitiveBlock(parentId);
-          const id = Blockly.utils.genUid();
-          target.blocks[id] = block;
-
-          replaceChildStatementReference(parentBlock, nextId, id);
-          block.parent = parentId;
-          block.next = nextId;
-          nextBlock.parent = id;
-
-          return id;
-        }
-
-        /**
-         * @param {string} parentId
-         * @param {Serialized.Block} block
-         */
-        function insertAfter(parentId, block) {
-          if (block.parent === null) throw new Error("block.parent must be null");
-          if (block.next === null) throw new Error("block.next must be null");
-          const parentBlock = getNonprimitiveBlock(parentId);
-          if (!parentBlock) throw new Error("tried to insert block before nonexistent block");
-          const nextId = parentBlock.next;
-          const nextBlock = getNonprimitiveBlock(nextId);
-          const id = Blockly.utils.genUid();
-          target.blocks[id] = block;
-
-          parentBlock.next = id;
-          block.parent = parentId;
-          block.next = nextId;
-          if (nextBlock) nextBlock.parent = id;
-
-          return id;
-        }
-
-        /**
-         * Unfold all function calls to procedure calls from a statemtn
-         * @param {string} stmtId
-         * @return {string | undefined} - first function call id
-         */
-        function transpileStatement(stmtId) {
-          const stmtBlock = getNonprimitiveBlock(stmtId);
-          const next = stmtBlock.next;
-
-          const nextBlock = getNonprimitiveBlock(next);
-
-          const calls = getAndReplaceCalls(stmtBlock);
+        function transpileStatement(stmt) {
+          const calls = getAndReplaceCalls(stmt);
           if (calls.length === 0) return;
 
-          if (stmtBlock.topLevel) {
+          if (stmt.isTopLevel()) {
             const [firstCall] = calls;
-            firstCall.x = stmtBlock.x;
-            firstCall.y = stmtBlock.y;
-            firstCall.topLevel = true;
-            stmtBlock.topLevel = false;
-            stmtBlock.x = undefined;
-            stmtBlock.y = undefined;
+            firstCall.assign({
+              x: stmt.ref.x,
+              y: stmt.ref.y,
+              topLevel: true,
+            });
+            stmt.assign({
+              topLevel: false,
+              x: undefined,
+              y: undefined,
+            });
           }
 
-          const callStmtIds = [];
           for (const call of calls) {
-            call.opcode = "procedures_call";
-            call.mutation.proccode = Signature.FUNCTION + call.mutation.proccode;
-            callStmtIds.push(insertBefore(stmtId, call));
+            call.assign({
+              opcode: "procedures_call",
+              mutation: {
+                proccode: Signature.FUNCTION + call.ref.mutation.proccode,
+              },
+            });
+            stmt.insertBefore(call);
           }
 
           const isCall =
-            stmtBlock.opcode === "procedures_call" && stmtBlock.mutation.proccode.startsWith(Signature.FUNCTION);
-          const isStackPush = stmtBlock.opcode === "data_insertatlist" && stmtBlock.fields.LIST[0] === Signature.STACK;
+            stmt.ref.opcode === "procedures_call" && stmt.ref.mutation.proccode.startsWith(Signature.FUNCTION);
+          const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields.LIST[0] === Signature.STACK;
 
-          /** @type {Serialized.Block} */
-          const deleter = {
+          const deleter = graph.register({
             opcode: "data_deleteoflist",
             fields: { LIST: [Signature.STACK, Signature.STACK] },
             // if the stmt we are transpiling is a fn call, we reserve index 1 for the return value
-            inputs: { INDEX: [1, [7, isCall || isStackPush ? "2" : "1"]] },
+            inputs: { INDEX: [InputType.SameShadow, [InputType.IntegerNumber, isCall || isStackPush ? "2" : "1"]] },
             shadow: false,
             topLevel: false,
-            next: null,
-            parent: null,
-          };
+          });
 
           // if there is more than one call replace deleter with repeater
           if (calls.length > 1) {
-            const deleterId = Blockly.utils.genUid();
-            const repeaterId = insertAfter(stmtId, {
+            const repeater = graph.register({
               opcode: "control_repeat",
               fields: {},
               inputs: {
-                TIMES: [1, [6, String(calls.length)]],
-                SUBSTACK: [2, deleterId],
+                TIMES: [InputType.SameShadow, [InputType.WholeNumber, String(calls.length)]],
+                SUBSTACK: [InputType.NoShadow, deleter.id],
               },
-              parent: deleter.parent,
-              next: deleter.next,
               shadow: false,
               topLevel: false,
-            });
-            deleter.next = null;
-            deleter.parent = repeaterId;
-            target.blocks[deleterId] = deleter;
+            })
+            deleter.ref.parent = repeater.id;
+
+            stmt.insertAfter(repeater);
           } else {
-            insertAfter(stmtId, deleter);
+            stmt.insertAfter(deleter);
           }
 
-          let startId = null;
-          for (const callStmtId of callStmtIds) {
-            const subStartId = transpileStatement(callStmtId);
-            if (startId === null) startId = subStartId;
+          let startingCall = null;
+          for (const call of calls) {
+            const subcall = transpileStatement(call);
+            if (startingCall === null) startingCall = subcall;
           }
-          return startId ?? callStmtIds[0];
+          return startingCall ?? calls[0];
         }
 
         /**
-         * @param {string} stmtId
-         * @param {Serialized.Block} [scope]
+         * converts a statement into a atomic procedure call
+         * @param {RegisteredBlock} stmt
+         * @param {RegisteredBlock} [scope]
+         * @returns {RegisteredBlock} - the cloned statement with atomic procedure
          */
-        function atomicizeStatement(stmtId, scope) {
-          const stmt = getNonprimitiveBlock(stmtId);
-          const prototypeId = Blockly.utils.genUid();
-          const definitionId = Blockly.utils.genUid();
-          const callId = Blockly.utils.genUid();
-
-          const proccode = `${Signature.ATOMIC}${stmtId.replaceAll("%", "\\%")} ${scope?.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""
+        function atomicizeStatement(stmt, scope) {
+          const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""
             }`;
 
           // clone argument reporters
-          const argumentids = scope?.mutation.argumentids ?? "[]";
+          const argumentids = scope?.ref.mutation.argumentids ?? "[]";
 
-          /** @type {Serialized.Block} */
-          const prototype = {
+          const prototype = graph.register({
             opcode: "procedures_prototype",
-            next: null,
-            parent: definitionId,
-            inputs: /** @type {any} */ (
-              Object.fromEntries(
-                Object.entries(scope?.inputs ?? {}).map(([name, [type, refId]]) => {
-                  // this shouldn't happen
-                  if (typeof refId !== "string") return [name, [type, refId]];
-                  const id = Blockly.utils.genUid();
-                  target.blocks[id] = structuredClone(getNonprimitiveBlock(refId));
-                  target.blocks[id].parent = prototypeId;
-                  return [name, [type, id]];
-                })
-              )
-            ),
+            inputs: {},
             fields: {},
             shadow: true,
             topLevel: false,
@@ -453,20 +642,18 @@ export function patchSerialization(context) {
               children: [],
               proccode,
               argumentids,
-              argumentnames: scope?.mutation.argumentnames ?? "[]",
-              argumentdefaults: scope?.mutation.argumentdefaults ?? "[]",
+              argumentnames: scope?.ref.mutation.argumentnames ?? "[]",
+              argumentdefaults: scope?.ref.mutation.argumentdefaults ?? "[]",
               warp: "true",
             },
-          };
-          target.blocks[prototypeId] = prototype;
+          });
 
-          /** @type {Serialized.Block} */
-          const definition = {
+          prototype.copyInputs(scope);
+
+          const definition = graph.register({
             opcode: "procedures_definition",
-            next: stmtId,
-            parent: null,
             inputs: {
-              custom_block: [1, prototypeId],
+              custom_block: [1, prototype.id],
             },
             fields: {},
             shadow: false,
@@ -474,28 +661,17 @@ export function patchSerialization(context) {
             // TODO determine smartly where to place definition
             x: 0,
             y: 0,
-          };
-          target.blocks[definitionId] = definition;
+          });
 
-          /** @type {Serialized.Block} */
-          const call = {
-            // copy stmt info like toplevel, x, y, parent, and next
-            ...stmt,
+          // clone the statement and insert it after the definition
+          const clone = stmt.clone();
+          definition.insertAfter(clone);
+
+          // convert statement to atomic call
+          stmt.assign({
             opcode: "procedures_call",
             comment: undefined,
-            inputs: /** @type {any} */ (
-              Object.fromEntries(
-                Object.entries(scope?.inputs ?? {}).map(([name, [type, refId]]) => {
-                  // this shouldn't happen
-                  if (typeof refId !== "string") return [name, [type, refId]];
-                  const id = Blockly.utils.genUid();
-                  target.blocks[id] = structuredClone(getNonprimitiveBlock(refId));
-                  target.blocks[id].parent = callId;
-                  target.blocks[id].shadow = false;
-                  return [name, [type, id]];
-                })
-              )
-            ),
+            inputs: {},
             fields: {},
             shadow: false,
             mutation: {
@@ -505,32 +681,24 @@ export function patchSerialization(context) {
               argumentids,
               warp: "true",
             },
-          };
-          target.blocks[callId] = call;
+          });
 
-          replaceChildStatementReference(getNonprimitiveBlock(stmt.parent), stmtId, callId);
-          stmt.parent = definitionId;
-          stmt.next = null;
+          stmt.copyInputs(scope);
+
+          return clone;
         }
 
-        function getScope() {
-          if (highestAncestor.opcode !== "procedures_definition") return undefined;
-          const [, prototypeId] = highestAncestor.inputs.custom_block;
-          if (typeof prototypeId !== "string") throw new Error("Definition prototype was not a string");
-          return getNonprimitiveBlock(prototypeId);
-        }
-
-        const scope = getScope();
-        if (scope?.mutation.warp === "true") {
+        const scope = anchor.getScope();
+        if (scope?.ref.mutation.warp === "true") {
           // we can inline the call
-          const blockId = transpileStatement(closestStatementId);
-          if (!blockId) {
-            console.warn("No block id returned from transpileStatement, skipping inline comment");
-            continue;
-          }
+          const block = transpileStatement(anchor);
+          // if (!blockId) {
+          //   console.warn("No block id returned from transpileStatement, skipping inline comment");
+          //   continue;
+          // }
           const commentId = Blockly.utils.genUid();
           target.comments[commentId] = {
-            blockId,
+            blockId: block.id,
             text: Signature.INLINE,
             minimized: true,
             height: 200,
@@ -538,13 +706,14 @@ export function patchSerialization(context) {
             x: 0,
             y: 0,
           };
-          getNonprimitiveBlock(blockId).comment = commentId;
+          block.ref.comment = commentId;
         } else {
-          atomicizeStatement(closestStatementId, scope);
-          transpileStatement(closestStatementId);
+          const clone = atomicizeStatement(anchor, scope);
+          transpileStatement(clone);
         }
       }
     }
+    console.log("transpiled", parsed);
     return JSON.stringify(parsed);
   };
 }
@@ -610,7 +779,9 @@ export function patchDeserialization(context) {
           if (!curr) throw new Error("Unexpected end of atomic function call stack");
           // order the stack references by descending index
           const stackRefs = getStackReferences(curr).sort((...refs) => {
-            const [a, b] = refs.map(({ inputs }) => Number.parseInt(blocks.getBlock(inputs.INDEX.block).fields.NUM.value));
+            const [a, b] = refs.map(({ inputs }) =>
+              Number.parseInt(blocks.getBlock(inputs.INDEX.block).fields.NUM.value)
+            );
             return b - a;
           });
           for (const stackRef of stackRefs) {
@@ -713,11 +884,7 @@ export function patchDeserialization(context) {
         }
         const nextBlock = blocks.getBlock(block.next);
         if (!nextBlock) continue;
-        if (
-          !nextBlock ||
-          nextBlock.opcode !== "control_stop" ||
-          nextBlock.fields.STOP_OPTION.value !== "this script"
-        ) {
+        if (!nextBlock || nextBlock.opcode !== "control_stop" || nextBlock.fields.STOP_OPTION.value !== "this script") {
           console.warn("Unexpected stack insertion block next", block, nextBlock);
           continue;
         }

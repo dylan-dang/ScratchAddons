@@ -910,6 +910,7 @@ declare namespace ScratchBlocks {
   }
 
   interface BlocklyGlobal {
+    
     getMainWorkspace(): Workspace | null;
   }
 }
