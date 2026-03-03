@@ -159,21 +159,7 @@ class SerializeTransformer {
 
       const scope = anchor.getScope();
       if (scope?.ref.mutation?.warp === "true") {
-        const result = this.transpileStatement(anchor, graph);
-        if (!result) continue;
-
-        // TODO add comment with method
-        const commentId = this.Blockly.utils.genUid();
-        target.comments[commentId] = {
-          blockId: result.id,
-          text: Signature.INLINE,
-          minimized: true,
-          height: 200,
-          width: 200,
-          x: 0,
-          y: 0,
-        };
-        result.ref.comment = commentId;
+        this.transpileStatement(anchor, graph);
       } else {
         this.atomicizeStatement(anchor, graph, scope);
         this.transpileStatement(anchor, graph);

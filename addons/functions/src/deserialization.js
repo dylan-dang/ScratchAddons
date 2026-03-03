@@ -20,7 +20,7 @@ export class DeserializeTransformer {
         const oldForceNoGlow = blocks.forceNoGlow;
         blocks.forceNoGlow = true;
 
-        this.transpileDefinitions(target);
+        this.transpileDefinitions(blocks);
         this.transpileReturns(blocks);
 
         blocks.forceNoGlow = oldForceNoGlow;
@@ -30,17 +30,17 @@ export class DeserializeTransformer {
         for (const target of this.vm.runtime.targets) {
             this.transpileTarget(target);
         }
+        this.vm.refreshWorkspace();
     }
 
     /**
      * @private
      * @param {ScratchVM.Blocks} blocks
      * @param {ScratchVM.Block} block
-     * @param {ScratchVM.Block} [replacement]
      */
-    detachBlock(blocks, block, replacement) {
+    detachBlock(blocks, block) {
         const parent = block.parent ? blocks.getBlock(block.parent) : null;
-        const nextId = replacement ? replacement.id : block.next ?? "";
+        const nextId = block.next || null;
         if (parent) {
             if (parent.next === block.id) parent.next = nextId;
             for (const input of Object.values(parent.inputs || {})) {
@@ -50,14 +50,52 @@ export class DeserializeTransformer {
         }
         const next = block.next ? blocks.getBlock(block.next) : null;
         if (next) {
-            next.parent = replacement ? replacement.id : block.parent;
-        }
-        if (replacement) {
-            replacement.parent = block.parent;
-            replacement.next = block.next;
+            next.parent = block.parent;
+            if (next.parent === null) blocks._addScript(next.id);
         }
         block.parent = null;
         block.next = null;
+        blocks._addScript(block.id);
+    }
+
+    /**
+     * Replace block with replacement in the graph. Caller must delete the replaced block afterward.
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {ScratchVM.Block} block
+     * @param {ScratchVM.Block} replacement
+     */
+    replaceBlock(blocks, block, replacement) {
+        const parent = block.parent ? blocks.getBlock(block.parent) : null;
+        if (parent) {
+            if (parent.next === block.id) parent.next = replacement.id;
+            for (const input of Object.values(parent.inputs || {})) {
+                if (!input || input.block !== block.id) continue;
+                input.block = replacement.id;
+            }
+        }
+        const next = block.next ? blocks.getBlock(block.next) : null;
+        if (next) next.parent = replacement.id;
+        blocks._deleteScript(replacement.id);
+        replacement.parent = block.parent;
+        replacement.next = block.next;
+        block.parent = null;
+        block.next = null;
+    }
+
+    /**
+     * Reparent all blocks that have oldParentId as parent to newParentId.
+     * Call before deleting a block to avoid dangling parent references.
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {string} oldParentId
+     * @param {string} newParentId
+     */
+    reparentChildren(blocks, oldParentId, newParentId) {
+        for (const block of Object.values(blocks._blocks)) {
+            if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+            if (block.parent === oldParentId) block.parent = newParentId;
+        }
     }
 
     /**
@@ -116,7 +154,9 @@ export class DeserializeTransformer {
                 stackRef.mutation = correspondingCall.mutation;
                 stackRef.mutation.proccode = stackRef.mutation.proccode.slice(Signature.FUNCTION.length);
                 stackRef.inputs = correspondingCall.inputs;
+                this.reparentChildren(blocks, correspondingCall.id, stackRef.id);
                 this.detachBlock(blocks, correspondingCall);
+                blocks._deleteScript(correspondingCall.id);
                 delete blocks._blocks[correspondingCall.id];
             }
             if (stackRefs.length) {
@@ -132,6 +172,7 @@ export class DeserializeTransformer {
             }
             curr = curr.next ? blocks.getBlock(curr.next) : null;
         } while (callStack.length);
+
         return foldedStatement;
     }
 
@@ -165,6 +206,7 @@ export class DeserializeTransformer {
             this.detachBlock(blocks, lastBlock);
             blocks.deleteBlock(lastBlock.id);
         }
+
     }
 
     /**
@@ -187,7 +229,7 @@ export class DeserializeTransformer {
         this.detachBlock(blocks, foldedStatement);
         for (const block of Object.values(blocks._blocks)) {
             if (block.opcode === "procedures_call" && block.mutation?.proccode === prototype.mutation.proccode) {
-                this.detachBlock(blocks, block, foldedStatement);
+                this.replaceBlock(blocks, block, foldedStatement);
                 blocks.deleteBlock(block.id);
             }
         }
@@ -196,10 +238,9 @@ export class DeserializeTransformer {
 
     /**
      * @private
-     * @param {ScratchVM.Target} target
+     * @param {ScratchVM.Blocks} blocks
      */
-    transpileDefinitions(target) {
-        const blocks = target.blocks;
+    transpileDefinitions(blocks) {
         const scripts = [...blocks.getScripts()];
 
         for (const script of scripts) {
@@ -231,6 +272,7 @@ export class DeserializeTransformer {
                 this.walkCallSites(blocks, topBlock);
             }
         }
+        verifyBlockGraph(blocks, "transpileDefinitions");
     }
 
     /**
@@ -301,11 +343,121 @@ export class DeserializeTransformer {
             blocks.deleteBlock(stopBlock.id);
             block.opcode = FunctionBlockType.RETURN;
             block.fields = {};
+            block.next = null;
 
             if (indexInput.block) blocks.deleteBlock(indexInput.block);
             if (indexInput.shadow) blocks.deleteBlock(indexInput.shadow);
             delete block.inputs.INDEX;
         }
+        verifyBlockGraph(blocks, "transpileReturns");
+    }
+}
+
+/**
+ * Verifies the block graph integrity for a Scratch VM Blocks container.
+ * Throws if invalid.
+ * - No dangling references: all referenced block IDs in parent, next, or inputs exist
+ * - No orphans: every block is referenced unless it is a top-level script
+ * - Double-link consistency:
+ *   - If block B is next on block A, then B.parent === A
+ *   - If block A has parent B, then B has A as next or in one of its inputs (block or shadow)
+ *
+ * @param {ScratchVM.Blocks} blocks
+ * @param {string} [context] Optional context for the error message
+ */
+export function verifyBlockGraph(blocks, context = "verification") {
+    /** @type {string[]} */
+    const errors = [];
+    const blockIds = new Set();
+    /** @type {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} */
+    const referencesByBlockId = new Map();
+
+    for (const id of Object.keys(blocks._blocks)) {
+        const blockOrPrimitive = blocks._blocks[id];
+        if (blockOrPrimitive && typeof blockOrPrimitive === "object" && !Array.isArray(blockOrPrimitive)) {
+            blockIds.add(id);
+        }
+    }
+
+    const topLevelIds = new Set(blocks.getScripts());
+
+    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+
+        /** @param {string} refId @param {"parent" | "next" | "input"} kind */
+        const recordRef = (refId, kind) => {
+            if (typeof refId !== "string" || !refId) return;
+            const refs = referencesByBlockId.get(refId) ?? [];
+            refs.push({ source: id, kind });
+            referencesByBlockId.set(refId, refs);
+        };
+
+        if (block.parent) recordRef(block.parent, "parent");
+        if (block.next) recordRef(block.next, "next");
+
+        for (const input of Object.values(block.inputs ?? {})) {
+            if (!input) continue;
+            if (input.block) recordRef(input.block, "input");
+            if (input.shadow) recordRef(input.shadow, "input");
+        }
+    }
+
+    // Check dangling references
+    for (const [refId, refs] of referencesByBlockId) {
+        if (!blockIds.has(refId)) {
+            errors.push(
+                `Dangling reference: block "${refId}" is referenced but does not exist. Sources: ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`
+            );
+        }
+    }
+
+    // Check orphans (blocks neither top-level nor referenced)
+    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+        if (topLevelIds.has(id)) continue;
+        if (referencesByBlockId.has(id)) continue;
+        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+        errors.push(`Orphan block: "${id}" (opcode: ${block.opcode}) is neither top-level nor referenced`);
+    }
+
+    // Check double-link consistency
+    for (const [id, blockOrPrimitive] of Object.entries(blocks._blocks)) {
+        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object" || Array.isArray(blockOrPrimitive)) continue;
+        const block = /** @type {ScratchVM.Block} */ (blockOrPrimitive);
+
+        if (block.next) {
+            const nextBlock = blocks.getBlock(block.next);
+            if (nextBlock && nextBlock.parent !== id) {
+                errors.push(
+                    `Broken next→parent link: block "${id}" has next="${block.next}", but that block has parent="${nextBlock.parent}" (expected "${id}")`
+                );
+            }
+        }
+
+        if (block.parent) {
+            const parentBlock = blocks.getBlock(block.parent);
+            if (!parentBlock) continue;
+            let found = parentBlock.next === id;
+            if (!found) {
+                for (const input of Object.values(parentBlock.inputs ?? {})) {
+                    if (!input) continue;
+                    if (input.block === id || input.shadow === id) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                errors.push(
+                    `Broken parent→child link: block "${id}" has parent="${block.parent}", but parent does not reference "${id}" in next or inputs`
+                );
+            }
+        }
+    }
+
+    if (errors.length > 0) {
+        throw new Error(`${context} failed: ${errors.join(", ")}`);
     }
 }
 
@@ -314,7 +466,6 @@ export function patchDeserialization(context) {
     const { vm } = context;
     const transformer = new DeserializeTransformer({ vm });
     vm.once("targetsUpdate", () => {
-        console.log("transpiling targets for once");
         transformer.transpileTargets();
     });
 

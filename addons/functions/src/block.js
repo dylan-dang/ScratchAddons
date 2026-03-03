@@ -200,7 +200,11 @@ export class RegisteredBlock {
         let tail = this;
         while (tail.ref.next) {
             const next = tail.getNext();
-            assert(next, `Unexpected tail block is not defined, tail.ref.next is ${tail.ref.next}`);
+            if (!next) {
+                console.error(`Unexpected tail next block is not defined`, tail);
+                tail.ref.next = null;
+                break;
+            }
             tail = next;
         }
         return tail;

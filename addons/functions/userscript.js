@@ -29,4 +29,6 @@ export default async function ({ addon }) {
   patchSerialization(context);
   const transformer = patchDeserialization(context);
   patchMenuBar(context, transformer);
+
+  vm.refreshWorkspace();
 }

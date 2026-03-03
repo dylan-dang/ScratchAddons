@@ -108,7 +108,7 @@ declare namespace ScratchVM {
 
   interface Input {
     name: string;
-    block: string;
+    block: string | null;
     shadow: string | null;
   }
 
@@ -207,6 +207,9 @@ declare namespace ScratchVM {
     toXML(): string;
 
     forceNoGlow: boolean;
+
+    _addScript(topBlockId: string): void;
+    _deleteScript(topBlockId: string): void;
   }
 
   interface RuntimeScriptCache {

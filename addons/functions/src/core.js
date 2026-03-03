@@ -29,7 +29,6 @@ export function patchCategory({ addon, Blockly, vm }) {
   // add category
   const CATEGORY_KEY = "FUNCTION";
   const originalGetBlocksXML = vm.runtime.getBlocksXML;
-  console.log("patching getBlocksXML");
   /** @param {any} target */
   vm.runtime.getBlocksXML = function (target) {
     const result = originalGetBlocksXML.call(this, target);
@@ -737,13 +736,12 @@ export async function patchMenuBar({ addon, vm }, transformer) {
   image.src = BUILD_ICON;
   buildButton.addEventListener("click", async () => {
     const doBuild = buildButton.ariaPressed === "false";
+    const workspace = addon.tab.traps.getWorkspace();
+    const scroll = saveScrollPosition(workspace);
     if (doBuild) {
       const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
-      const workspace = addon.tab.traps.getWorkspace();
-      const scroll = saveScrollPosition(workspace);
       await vm.loadProject(vm.toJSON());
       vm.setEditingTarget(vm.runtime.targets[targetIdx].id);
-      if (scroll) workspace.scrollbar?.set(scroll.x, scroll.y);
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
     } else {
@@ -751,6 +749,7 @@ export async function patchMenuBar({ addon, vm }, transformer) {
       image.src = BUILD_ICON;
       buildButton.ariaPressed = "false";
     }
+    if (scroll) workspace.scrollbar?.set(scroll.x, scroll.y);
   });
   fileGroup.after(buildButton);
 }
