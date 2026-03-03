@@ -1,10 +1,10 @@
+import { FunctionBlockType, Signature } from "../../shared.js";
 import { assert } from "../../utils.js";
-import { FunctionBlockType, Signature } from "../shared.js";
 import { validate } from "../validator.js";
 import { InputType, RegisteredBlock } from "./block.js";
 import { SerializedBlockGraph } from "./graph.js";
 
-/** @typedef {import("../../../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
 
 
 class Encoder {

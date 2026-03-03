@@ -18,9 +18,8 @@ declare namespace ScratchBlocks {
     setOffsetInBlock: (x: number, y: number) => void;
     targetBlock: () => BlockSvg;
     CAN_CONNECT: number;
-    prototype: {
-      canConnectWithReason_(target: Connection): number;
-    };
+    canConnectWithReason_(target: Connection): number;
+    sourceBlock_: Block;
   };
   export type Input = Omit<import("blockly/core").Input, "connection"> & {
     connection: Connection;

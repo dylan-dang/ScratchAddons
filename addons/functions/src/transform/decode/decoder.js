@@ -1,9 +1,9 @@
-/// <reference path="../../../types/scratch-vm.d.ts" />
+/// <reference path="../../types/scratch-vm.d.ts" />
+import { FunctionBlockType, Signature } from "../../shared.js";
 import { assert } from "../../utils.js";
-import { FunctionBlockType, Signature } from "../shared.js";
 import { validate } from "../validator.js";
 
-/** @typedef {import("../../../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
 
 export class Decoder {
     /**
@@ -165,9 +165,15 @@ export class Decoder {
             }
             if (stackRefs.length) {
                 foldedStatement = curr;
-                assert(curr.next, "Folded statement missing next block");
+                if (!curr.next) {
+                    console.warn("Folded statement missing next block", curr);
+                    return null;
+                }
                 const deleter = blocks.getBlock(curr.next);
-                assert(deleter, "Folded statement next block not found");
+                if (!deleter) {
+                    console.warn("stack deleter block not found", curr);
+                    return null;
+                }
                 this.detachBlock(blocks, deleter);
                 blocks.deleteBlock(deleter.id);
             }
@@ -249,7 +255,7 @@ export class Decoder {
 
         for (const script of scripts) {
             const topBlock = blocks.getBlock(script);
-            assert(topBlock, "Unexpected script without top block");
+            if (!topBlock) continue;
             if (topBlock.opcode !== "procedures_definition") continue;
             if (!topBlock.inputs.custom_block) continue;
 

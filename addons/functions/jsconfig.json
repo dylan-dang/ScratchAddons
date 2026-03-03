@@ -8,5 +8,5 @@
     "checkJs": true,
     "skipLibCheck": false
   },
-  "files": ["userscript.js"]
+  "include": ["src"]
 }

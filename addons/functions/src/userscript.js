@@ -1,9 +1,12 @@
-/// <reference path="types/sb3.d.ts" />
-/// <reference path="types/userscript.d.ts" />
+/// <reference path="./types/sb3.d.ts" />
+/// <reference path="./types/userscript.d.ts" />
 
-import { defineBlocks, patchBlockDragger, patchBlockSvg, patchCategory, patchConnection, patchMenuBar } from "./src/core.js";
-import { patchDeserialization } from "./src/transform/decode/decoder.js";
-import { patchSerialization } from "./src/transform/encode/encoder.js";
+import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks/index.js";
+import { patchCategory } from "./editor/patches.js";
+import { patchMenuBar } from "./editor/ui.js";
+import { patchDeserialization } from "./transform/decode/decoder.js";
+import { patchSerialization } from "./transform/encode/encoder.js";
+import { patchVM } from "./vm/index.js";
 
 /**
  * @typedef {Object} FunctionContext
@@ -29,6 +32,7 @@ export default async function ({ addon }) {
   patchSerialization(context);
   const transformer = patchDeserialization(context);
   patchMenuBar(context, transformer);
+  patchVM(context);
 
   vm.refreshWorkspace();
 }

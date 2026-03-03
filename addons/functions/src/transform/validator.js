@@ -1,4 +1,4 @@
-/// <reference path="../../types/scratch-vm.d.ts" />
+/// <reference path="../types/scratch-vm.d.ts" />
 
 import { InputType } from "./encode/block.js";
 
