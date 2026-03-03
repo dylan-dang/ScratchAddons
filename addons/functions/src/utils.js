@@ -1,47 +1,34 @@
 /**
- * @param {any} item
- * @returns {boolean}
+ * Throws an Error if the given condition is not truthy.
+ * @param {unknown} condition - The assertion condition.
+ * @param {string} [message] - The error message to throw if the assertion fails.
+ * @return {asserts condition}
  */
-function isObject(item) {
-    return item && typeof item === "object" && !Array.isArray(item);
+export function assert(condition, message) {
+    if (!condition) throw new Error(message || "Assertion failed");
 }
 
 /**
- * @template T
- * @typedef {T extends Array<infer U> ? Array<U> :
- * T extends object ? { [P in keyof T]?: DeepPartial<T[P]>; } :
- * T} DeepPartial
+ * Waits until an element renders, then return the element.
+ * @param {string} selector - argument passed to querySelector.
+ * @returns {Promise<Element>} - element found.
  */
+export async function waitForElement(selector) {
+    const element = document.querySelector(selector);
+    if (element) return element;
 
-/**
- * Recursively merges source properties into a target object.
- * * @template T
- * @param {T} target - The object to be mutated.
- * @param {DeepPartial<T>} source - The object containing updates.
- * @returns {T} The merged target.
- */
-export function deepMerge(target, source) {
-    for (const key in source) {
-        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-
-        const sourceValue = source[key];
-        const targetValue = /** @type {any} */ (target)[key];
-
-        // handle deletion if source is explicitly undefined
-        if (sourceValue === undefined) {
-            delete /** @type {any} */ (target)[key];
-            continue;
-        }
-
-        // handle recursion
-        if (isObject(sourceValue) && isObject(targetValue)) {
-            deepMerge(targetValue, sourceValue);
-        }
-
-        // handle assignment
-        else {
-        /** @type {any} */ (target)[key] = sourceValue;
-        }
-    }
-    return target;
+    return new Promise((resolve) => {
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === "childList") {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        resolve(element);
+                        observer.disconnect();
+                    }
+                }
+            }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+    });
 }

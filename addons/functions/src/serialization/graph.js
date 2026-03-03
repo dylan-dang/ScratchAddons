@@ -26,11 +26,13 @@ export class SerializedBlockGraph {
 
     /**
      * @private
-     * @param {string | Serialized.Primitive} referenceId
+     * @param {string | Serialized.Primitive | null} referenceId
      */
     deleteTreeReference(referenceId) {
         if (typeof referenceId !== "string") return;
-        this.deleteTree(this.getBlock(referenceId));
+        const block = this.getBlock(referenceId);
+        if (!block) return;
+        this.deleteTree(block);
     }
 
     /**
@@ -42,6 +44,7 @@ export class SerializedBlockGraph {
          * @param {string | Serialized.Primitive} refId
          */
         for (const input of Object.values(block.ref.inputs)) {
+            if (!input) continue;
             const [type] = input;
             switch (type) {
                 case InputType.DifferentShadow:
@@ -68,12 +71,13 @@ export class SerializedBlockGraph {
     }
 
     /**
-     * @param {string} id
-     * @returns {RegisteredBlock | undefined}
+     * @param {string | null} [id] - The ID of the block to get.
+     * @returns {RegisteredBlock | null} - The block with the given ID, or null if the block does not exist.
      */
     getBlock(id) {
+        if (!id) return null;
         const block = this.blocks[id];
-        if (!block) return undefined;
+        if (!block) return null;
         if (Array.isArray(block)) throw Error("Unexpected primitive block");
         return new RegisteredBlock(block, id, this);
     }

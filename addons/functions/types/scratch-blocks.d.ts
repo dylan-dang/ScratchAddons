@@ -876,7 +876,7 @@ declare namespace ScratchBlocks {
     };
     WorkspaceSvg: WorkspaceSvg;
     utils: Utils;
-    Blocks: Record<string, BlockDefinition> & { defaultToolbox: string };
+    Blocks: Record<string, BlockDefinition> & { defaultToolbox: string | null };
     Field: Field;
     ScratchBlocks: {
       VerticalExtensions: VerticalExtensions;
@@ -910,7 +910,6 @@ declare namespace ScratchBlocks {
   }
 
   interface BlocklyGlobal {
-    
     getMainWorkspace(): Workspace | null;
   }
 }

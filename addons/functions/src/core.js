@@ -1,5 +1,6 @@
 import { FunctionBlockType } from "./constants.js";
 import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
+import { assert, waitForElement as getElement } from "./utils.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
@@ -97,14 +98,18 @@ export function patchCategory({ addon, Blockly, vm }) {
       const CALLBACK_KEY = "CREATE_FUNCTION";
       workspace.registerButtonCallback(CALLBACK_KEY, () => {
         modal.open();
-        /** @type {HTMLDivElement} */
         const blocksRef = modal.content.querySelector("#sa-function-workspace");
+        assert(blocksRef, "Blocks reference not found");
         const numberOrTextInput = modal.content.querySelector("#sa-function-number-or-text-input");
+        assert(numberOrTextInput, "Number or text input not found");
         const booleanInput = modal.content.querySelector("#sa-function-boolean-input");
+        assert(booleanInput, "Boolean input not found");
         const labelInput = modal.content.querySelector("#sa-function-label-input");
-
+        assert(labelInput, "Label input not found");
         const cancelButton = modal.content.querySelector("#sa-function-cancel-button");
+        assert(cancelButton, "Cancel button not found");
         const okButton = modal.content.querySelector("#sa-function-ok-button");
+        assert(okButton, "OK button not found");
 
         const oldDefaultToolbox = Blockly.Blocks.defaultToolbox;
         Blockly.Blocks.defaultToolbox = null;
@@ -150,6 +155,7 @@ export function patchCategory({ addon, Blockly, vm }) {
         }
 
         function handleOk() {
+          assert(mutationRoot.mutationToDom, "Mutation root mutation to dom is required");
           const workspace = addon.tab.traps.getWorkspace();
           const blockDom = xml`<block type="${FunctionBlockType.DEFINITION}" gap="16">
             <value name="custom_block">
@@ -158,7 +164,7 @@ export function patchCategory({ addon, Blockly, vm }) {
               </shadow>
             </value>
           </block>`;
-          if (!(blockDom instanceof Element)) throw new Error("this should not happen");
+          assert(blockDom instanceof Element, "Block DOM should be an element");
           Blockly.Events.setGroup(true);
           /** @type {ScratchBlocks.Block} */
           const block = Blockly.Xml.domToBlock(blockDom, workspace);
@@ -177,13 +183,13 @@ export function patchCategory({ addon, Blockly, vm }) {
         function handleClose() {
           modal.close();
           workspace.dispose();
-          numberOrTextInput.removeEventListener("click", handleAddTextNumber);
-          booleanInput.removeEventListener("click", handleAddBoolean);
-          labelInput.removeEventListener("click", handleAddLabel);
+          numberOrTextInput?.removeEventListener("click", handleAddTextNumber);
+          booleanInput?.removeEventListener("click", handleAddBoolean);
+          labelInput?.removeEventListener("click", handleAddLabel);
           modal.backdrop.removeEventListener("click", handleClose);
           modal.closeButton.removeEventListener("click", handleClose);
-          cancelButton.removeEventListener("click", handleClose);
-          okButton.removeEventListener("click", handleOk);
+          cancelButton?.removeEventListener("click", handleClose);
+          okButton?.removeEventListener("click", handleOk);
         }
 
         numberOrTextInput.addEventListener("click", handleAddTextNumber);
@@ -530,6 +536,7 @@ export function defineBlocks({ Blockly }) {
      */
     getClickTarget_() {
       const target = super.getClickTarget_();
+      if (!target) return null;
       if (target.classList.contains("blocklyEditableText")) return target;
       return Array.from(target.children).find((child) => child.classList.contains("blocklyEditableText")) ?? target;
     }
@@ -617,9 +624,10 @@ export function patchVM({ vm }) {
    * @param {ScratchVM.Blocks | null} blocks
    */
   function getPrototype(blocks, proccode) {
+    if (!blocks) return null;
     for (const block of Object.values(blocks._blocks)) {
       if (block.opcode !== FunctionBlockType.PROTOTYPE) continue;
-      if (block.mutation.proccode !== proccode) continue;
+      if (block.mutation?.proccode !== proccode) continue;
       return block;
     }
     return null;
@@ -657,9 +665,10 @@ export function patchVM({ vm }) {
     const ids = JSON.parse(mutation.argumentids);
     const defaults = JSON.parse(mutation.argumentdefaults);
 
-    const childThread = util.runtime._pushThread(prototype.parent, util.target);
+    const childThread = util.runtime._pushThread(prototype.parent ?? "", util.target);
     const childStackFrame = childThread.peekStackFrame();
-    childStackFrame.warpMode = JSON.parse(mutation.warp);
+    if (childStackFrame)
+      childStackFrame.warpMode = JSON.parse(mutation.warp);
 
     return new Promise((resolve) => {
       childThread.function = {
@@ -698,8 +707,8 @@ export function patchVM({ vm }) {
 }
 
 /** @param {FunctionContext} context */
-export function patchMenuBar({ addon }) {
-  const fileGroup = document.querySelector(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
+export async function patchMenuBar({ addon }) {
+  const fileGroup = await getElement(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
   const buildButton = document.createElement('div');
   buildButton.classList.add(addon.tab.scratchClass("menu-bar_menu-bar-item"), addon.tab.scratchClass("menu-bar_hoverable"));
   buildButton.role = "button";

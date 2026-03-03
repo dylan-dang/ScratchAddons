@@ -1,4 +1,5 @@
 import { FunctionBlockType, Signature } from "../constants.js";
+import { assert } from "../utils.js";
 import { InputType, RegisteredBlock } from "./block.js";
 import { SerializedBlockGraph } from "./graph.js";
 
@@ -35,6 +36,7 @@ class SerializeTransformer {
    */
   transpilePrototypes(graph) {
     for (const prototype of graph.getBlocks([FunctionBlockType.PROTOTYPE])) {
+      assert(prototype.ref.mutation, "Prototype mutation is required");
       prototype.assign({
         opcode: "procedures_prototype",
         mutation: {
@@ -48,12 +50,12 @@ class SerializeTransformer {
   /**
    * @private
    * convert control_stop blocks to empty return blocks so that we can correct them
-   * @param {RegisteredBlock} block
+   * @param {RegisteredBlock | null} block
    */
   replaceStopScripts(block) {
     if (!block) return;
 
-    if (block.ref.opcode === "control_stop" && block.ref.fields.STOP_OPTION[0] === "this script") {
+    if (block.ref.opcode === "control_stop" && block.ref.fields?.STOP_OPTION?.[0] === "this script") {
       block.assign({
         opcode: FunctionBlockType.RETURN,
         mutation: undefined,
@@ -65,9 +67,12 @@ class SerializeTransformer {
 
     this.replaceStopScripts(block.getNext());
     // handle branching blocks
-    for (const [name, [type, refId]] of Object.entries(block.ref.inputs)) {
-      if (!name.startsWith("SUBSTACK")) continue;
-      if (type > 3 || typeof refId !== "string") continue; // not a block reference
+    for (const [name, input] of Object.entries(block.ref.inputs)) {
+      if (!input) continue;
+      const [type, refId] = input;
+      if (!name.startsWith("SUBSTACK")) continue; // not a substack input
+      if (type > 3) continue; // not a block reference
+      if (typeof refId !== "string") continue; // not a block reference
       this.replaceStopScripts(block.graph.getBlock(refId));
     }
   }
@@ -153,8 +158,11 @@ class SerializeTransformer {
       }
 
       const scope = anchor.getScope();
-      if (scope?.ref.mutation.warp === "true") {
+      if (scope?.ref.mutation?.warp === "true") {
         const result = this.transpileStatement(anchor, graph);
+        if (!result) continue;
+
+        // TODO add comment with method
         const commentId = this.Blockly.utils.genUid();
         target.comments[commentId] = {
           blockId: result.id,
@@ -182,16 +190,17 @@ class SerializeTransformer {
    */
   getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
     if (block.ref.opcode === FunctionBlockType.CALL) {
-      const copy = block.copy();
-      block.assign({
+      block.swap(graph.register({
         opcode: "data_itemoflist",
         mutation: undefined,
         fields: { LIST: [Signature.STACK, Signature.STACK] },
         inputs: {
           INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
         },
-      });
-      return [copy];
+        shadow: false,
+        topLevel: false
+      }));
+      return [block];
     }
 
     /** @type {string[]} */
@@ -202,16 +211,17 @@ class SerializeTransformer {
       ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
     ];
 
+    /** @type {RegisteredBlock[]} */
     const inputBlocks = argumentIds
       .map((argId) => block.ref.inputs[argId])
-      .filter(Boolean)
+      .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
       .map(([, input]) => {
         if (typeof input !== "string") return;
         return graph.getBlock(input);
       })
-      .filter(Boolean);
+      .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
 
-    return inputBlocks.flatMap((b) => this.getAndReplaceCalls(b, graph, ctx));
+    return inputBlocks.flatMap((block) => this.getAndReplaceCalls(block, graph, ctx));
   }
 
   /**
@@ -235,6 +245,7 @@ class SerializeTransformer {
     }
 
     for (const call of calls) {
+      assert(call.ref.mutation, "Call mutation is required");
       call.assign({
         opcode: "procedures_call",
         mutation: {
@@ -246,8 +257,8 @@ class SerializeTransformer {
     }
 
     const isCall =
-      stmt.ref.opcode === "procedures_call" && stmt.ref.mutation.proccode.startsWith(Signature.FUNCTION);
-    const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields.LIST[0] === Signature.STACK;
+      stmt.ref.opcode === "procedures_call" && stmt.ref.mutation?.proccode?.startsWith(Signature.FUNCTION);
+    const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields?.LIST?.[0] === Signature.STACK;
 
     const deleter = graph.register({
       opcode: "data_deleteoflist",
@@ -292,8 +303,8 @@ class SerializeTransformer {
    * @returns {RegisteredBlock}
    */
   atomicizeStatement(stmt, graph, scope) {
-    const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation.proccode.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""}`;
-    const argumentids = scope?.ref.mutation.argumentids ?? "[]";
+    const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation?.proccode?.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""}`;
+    const argumentids = scope?.ref.mutation?.argumentids ?? "[]";
 
     const prototype = graph.register({
       opcode: "procedures_prototype",
@@ -306,12 +317,14 @@ class SerializeTransformer {
         children: [],
         proccode,
         argumentids,
-        argumentnames: scope?.ref.mutation.argumentnames ?? "[]",
-        argumentdefaults: scope?.ref.mutation.argumentdefaults ?? "[]",
+        argumentnames: scope?.ref.mutation?.argumentnames ?? "[]",
+        argumentdefaults: scope?.ref.mutation?.argumentdefaults ?? "[]",
         warp: "true",
       },
     });
-    prototype.copyInputs(scope);
+    if (scope) {
+      prototype.copyInputs(scope);
+    }
 
     const definition = graph.register({
       opcode: "procedures_definition",
@@ -340,7 +353,9 @@ class SerializeTransformer {
         warp: "true",
       },
     });
-    stmt.copyInputs(scope);
+    if (scope) {
+      stmt.copyInputs(scope);
+    }
 
     return copy;
   }

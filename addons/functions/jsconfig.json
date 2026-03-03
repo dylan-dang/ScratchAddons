@@ -4,6 +4,7 @@
     "moduleResolution": "nodenext",
     "lib": ["ES2024", "dom"],
     "noImplicitAny": true,
+    "strictNullChecks": true,
     "checkJs": true,
     "skipLibCheck": false
   },

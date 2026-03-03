@@ -5,6 +5,8 @@
  * @prop {string} [check]
  */
 
+import { assert } from "../utils.js";
+
 /**
  * @typedef {Object} BlockJson
  * @prop {string} [message0]
@@ -65,20 +67,20 @@ export class RegisteredBlock {
 
     /**
      * @private
-     * @param {RegisteredBlock} parent
+     * @param {RegisteredBlock | null} parent
      */
-    setParent(parent) {
-        this.ref.parent = parent.id;
-        parent.ref.next = this.id;
+    linkToParent(parent) {
+        this.ref.parent = parent?.id ?? null;
+        if (parent) parent.ref.next = this.id;
     }
 
     /**
      * @private
-     * @param {RegisteredBlock} next
+     * @param {RegisteredBlock | null} next
      */
-    setNext(next) {
-        this.ref.next = next.id;
-        next.ref.parent = this.id;
+    linkToNext(next) {
+        this.ref.next = next?.id ?? null;
+        if (next) next.ref.parent = this.id;
     }
 
     /**
@@ -87,6 +89,7 @@ export class RegisteredBlock {
      */
     replaceInputReferences(previous, replacement) {
         for (const input of Object.values(this.ref.inputs)) {
+            assert(input);
             const [type] = input;
             switch (type) {
                 case InputType.DifferentShadow:
@@ -101,14 +104,14 @@ export class RegisteredBlock {
     }
 
     /**
-     * @returns {RegisteredBlock | undefined} parent
+     * @returns {RegisteredBlock | null} parent
      */
     getParent() {
         return this.graph.getBlock(this.ref.parent);
     }
 
     /**
-     * @returns {RegisteredBlock | undefined} next
+     * @returns {RegisteredBlock | null} next
      */
     getNext() {
         return this.graph.getBlock(this.ref.next);
@@ -119,8 +122,8 @@ export class RegisteredBlock {
      */
     insertAfter(other) {
         const next = this.getNext();
-        this.setNext(other);
-        if (next) next.setParent(other);
+        this.linkToNext(other);
+        if (next) next.linkToParent(other);
     }
 
     /**
@@ -128,10 +131,10 @@ export class RegisteredBlock {
      */
     insertBefore(other) {
         const parent = this.getParent();
-        this.setParent(other);
+        this.linkToParent(other);
         if (parent) {
             parent.replaceInputReferences(this, other); // handles branching blocks with substacks
-            parent.setNext(other);
+            parent.linkToNext(other);
         }
     }
 
@@ -153,6 +156,7 @@ export class RegisteredBlock {
     getBlockDefinition() {
         const ctx = {
             /** @type {BlockJson} */
+            // @ts-expect-error - this is initialized in the jsonInit method
             json: null,
             /** @param {BlockJson} json */
             jsonInit(json) {
@@ -171,7 +175,9 @@ export class RegisteredBlock {
         /** @type {RegisteredBlock} */
         let tail = this;
         while (tail.ref.next) {
-            tail = tail.getNext();
+            const next = tail.getNext();
+            assert(next);
+            tail = next;
         }
         return tail;
     }
@@ -184,7 +190,9 @@ export class RegisteredBlock {
         /** @type {RegisteredBlock} */
         let head = this;
         while (head.ref.parent) {
-            head = head.getParent();
+            const parent = head.getParent();
+            assert(parent);
+            head = parent;
         }
         return head;
     }
@@ -197,7 +205,9 @@ export class RegisteredBlock {
         /** @type {RegisteredBlock} */
         let anchor = this;
         while (anchor.ref.parent && anchor.isReporter()) {
-            anchor = anchor.getParent();
+            const parent = anchor.getParent();
+            assert(parent);
+            anchor = parent;
         }
         return anchor;
     }
@@ -245,11 +255,28 @@ export class RegisteredBlock {
     }
 
     /**
+     * Swap the position of this block with another block
+     * @param {RegisteredBlock} other
+     */
+    swap(other) {
+        const parent = this.getParent();
+        const next = this.getNext();
+        this.linkToParent(other.getParent());
+        this.linkToNext(other.getNext());
+        other.linkToParent(parent);
+        other.linkToNext(next);
+        // handle branching blocks with substacks
+        parent?.replaceInputReferences(this, other);
+        other.getParent()?.replaceInputReferences(other, this);
+    }
+
+    /**
      * shallow copy the inputs of another block to this block
      * @param {RegisteredBlock} other
      */
     copyInputs(other) {
         for (const [name, input] of Object.entries(other?.ref.inputs ?? {})) {
+            if (!input) continue;
             const [type, reference] = input;
             switch (type) {
                 case InputType.SameShadow:
@@ -260,7 +287,8 @@ export class RegisteredBlock {
                         this.ref.inputs[name] = input;
                         break;
                     }
-                    const copy = this.graph.getBlock(reference).copy();
+                    const copy = this.graph.getBlock(reference)?.copy();
+                    assert(copy);
                     /** @type {Serialized.Primitive} */
                     const copyRef = [...input];
                     copyRef[1] = copy.id;
@@ -274,12 +302,17 @@ export class RegisteredBlock {
         }
     }
 
+    /**
+     * Returns the scope block of this block if it is a function definition
+     * @returns {RegisteredBlock | undefined}
+     */
     getScope() {
         const head = this.head();
         if (head.ref.opcode !== "procedures_definition") return undefined;
+        assert(head.ref.inputs.custom_block, "custom_block input not found on procedure definition");
         const [, prototypeId] = head.ref.inputs.custom_block;
-        if (typeof prototypeId !== "string") throw new Error("Definition prototype was not a string");
-        return this.graph.getBlock(prototypeId);
+        assert(typeof prototypeId === "string", "Definition prototype was not a string");
+        return this.graph.getBlock(prototypeId) ?? undefined;
     }
 
     /**
@@ -287,14 +320,18 @@ export class RegisteredBlock {
      */
     *getInputBlocks() {
         for (const input of Object.values(this.ref.inputs)) {
-            const [type] = input;
+            if (!input) continue;
+            const [type, ...rest] = input;
             switch (type) {
                 case InputType.DifferentShadow:
-                    if (typeof input[2] === "string") yield this.graph.getBlock(input[2]);
-                // fallthrough
+                case InputType.NoShadow:
                 case InputType.SameShadow:
-                    if (typeof input[1] === "string") yield this.graph.getBlock(input[1]);
-                    break;
+                    for (const referenceId of rest) {
+                        if (typeof referenceId !== "string") continue;
+                        const block = this.graph.getBlock(referenceId);
+                        assert(block);
+                        yield block;
+                    }
             }
         }
     }
