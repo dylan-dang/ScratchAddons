@@ -175,8 +175,8 @@ class SerializeTransformer {
         };
         result.ref.comment = commentId;
       } else {
-        const copy = this.atomicizeStatement(anchor, graph, scope);
-        this.transpileStatement(copy, graph);
+        this.atomicizeStatement(anchor, graph, scope);
+        this.transpileStatement(anchor, graph);
       }
     }
   }
@@ -300,7 +300,6 @@ class SerializeTransformer {
    * @param {RegisteredBlock} stmt
    * @param {SerializedBlockGraph} graph
    * @param {RegisteredBlock} [scope]
-   * @returns {RegisteredBlock}
    */
   atomicizeStatement(stmt, graph, scope) {
     const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation?.proccode?.match(/(?<!\\)%[nbs]/g).join(" ") ?? ""}`;
@@ -336,10 +335,7 @@ class SerializeTransformer {
       y: 0,
     });
 
-    const copy = stmt.copy();
-    definition.insertAfter(copy);
-
-    stmt.assign({
+    const atomicCall = graph.register({
       opcode: "procedures_call",
       comment: undefined,
       inputs: {},
@@ -352,12 +348,15 @@ class SerializeTransformer {
         argumentids,
         warp: "true",
       },
+      topLevel: false
     });
     if (scope) {
-      stmt.copyInputs(scope);
+      atomicCall.copyInputs(scope);
     }
 
-    return copy;
+    stmt.swap(atomicCall);
+
+    definition.insertAfter(stmt);
   }
 }
 
