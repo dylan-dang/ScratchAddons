@@ -1,4 +1,4 @@
-/// <reference path="./types/sb3.d.ts" />
+/// <reference path="./types/scratch/sb3.d.ts" />
 /// <reference path="./types/userscript.d.ts" />
 
 import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks/index.js";

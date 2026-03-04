@@ -1,7 +1,7 @@
 // Type definitions for scratch-gui redux state and events
 // Project: https://github.com/LLK/scratch-gui
 
-/// <reference path="./scratch-paint.ts" />
+/// <reference path="./scratch-paint.d.ts" />
 /// <reference path="./scratch-vm.d.ts" />
 
 declare namespace ScratchGUI {

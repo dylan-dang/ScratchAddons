@@ -5,6 +5,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.1.0",
     "blockly": "^11.2.2",
+    "paper": "^0.12.18",
     "twgl.js": "^5.5.4"
   }
 }

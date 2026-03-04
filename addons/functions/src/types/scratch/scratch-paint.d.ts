@@ -1,7 +1,7 @@
 // Type definitions for scratch-paint redux state and events
 // Project: https://github.com/LLK/scratch-paint
 
-/// <reference path="./paper.d.ts" />
+/// <reference types="paper" />
 
 declare namespace ScratchPaint {
   const enum VectorMode {
@@ -106,7 +106,7 @@ declare namespace ScratchPaint {
     };
 
     clipboard: {
-      items: Paper.Base[];
+      items: paper.Item[];
       pasteOffset: number;
     };
 
@@ -135,7 +135,7 @@ declare namespace ScratchPaint {
 
     modals: Record<Modal, boolean>;
 
-    selectedItems: Paper.Base[];
+    selectedItems: paper.Item[];
 
     textEditTarget: number | null;
 
@@ -144,11 +144,11 @@ declare namespace ScratchPaint {
       pointer: number;
     };
 
-    viewBounds: Paper.Matrix;
+    viewBounds: paper.Matrix;
 
     zoomLevels: {
       currentZoomLevelId: string;
-    } & Record<string, Paper.Matrix>;
+    } & Record<string, paper.Matrix>;
   }
 
   type ReduxEvent =
@@ -171,7 +171,7 @@ declare namespace ScratchPaint {
     | {
         type: "scratch-paint/eye-dropper/ACTIVATE_COLOR_PICKER";
         callback: ScratchPaintState["color"]["eyeDropper"]["callback"];
-        previousMode: Paper.Tool;
+        previousMode: paper.Tool;
       }
     | {
         type: "scratch-paint/eye-dropper/DEACTIVATE_COLOR_PICKER";
@@ -295,11 +295,11 @@ declare namespace ScratchPaint {
       }
     | {
         type: "scratch-paint/view/UPDATE_VIEW_BOUNDS";
-        viewBounds: Paper.Matrix;
+        viewBounds: paper.Matrix;
       }
     | {
         type: "scratch-paint/zoom-levels/SAVE_ZOOM_LEVEL";
-        zoomLevel: Paper.Matrix;
+        zoomLevel: paper.Matrix;
       }
     | {
         type: "scratch-paint/zoom-levels/SET_ZOOM_LEVEL_ID";
