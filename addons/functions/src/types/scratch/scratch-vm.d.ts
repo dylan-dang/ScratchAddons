@@ -672,9 +672,9 @@ declare namespace ScratchVM {
     reporting: string;
     reported: unknown;
     executed?: boolean;
-    /** @deprecated unused */
-    waitingReporter: unknown;
-    params: Record<string, any>;
+    // /** @deprecated unused */
+    waitingReporter?: boolean;
+    params: Record<string, any> | null;
     executionContext: unknown;
     reset(): void;
   }
@@ -710,11 +710,11 @@ declare namespace ScratchVM {
     /**
      * @see {Blocks.getProcedureParamNamesAndIds}
      */
-    getProcedureParamNamesAndIds(): [string[], string[]];
+    getProcedureParamNamesAndIds(procedureCOde: string): [string[], string[]];
     /**
      * @see {Blocks.getProcedureParamNamesIdsAndDefaults}
      */
-    getProcedureParamNamesIdsAndDefaults(): [string[], string[], string[]];
+    getProcedureParamNamesIdsAndDefaults(procedureCOde: string): [string[], string[], string[]];
     /**
      * @see {Thread.initParams}
      */
@@ -771,14 +771,6 @@ declare namespace ScratchVM {
     isRecursiveCall(procedureCode: string): boolean;
     stackClick: boolean;
     updateMonitor: boolean;
-    /** we set this ourselves */
-    function?: {
-      depth: number;
-      // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-      resolve(value: any): void;
-      // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-      params: Record<string, any>;
-    };
   }
 
   interface HatInfo {
@@ -845,7 +837,7 @@ declare namespace ScratchVM {
 
     time(): number;
 
-    relativeTime(): number;
+    // relativeTime(): number;
 
     start(): void;
 

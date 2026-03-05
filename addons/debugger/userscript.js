@@ -1,10 +1,10 @@
-import { isPaused, setPaused, onPauseChanged, setup } from "./module.js";
-import createLogsTab from "./logs.js";
-import createThreadsTab from "./threads.js";
-import createPerformanceTab from "./performance.js";
-import createTimingTab from "./timing/createTimingTab.js";
-import Utils from "../find-bar/blockly/Utils.js";
 import addSmallStageClass from "../../libraries/common/cs/small-stage.js";
+import Utils from "../find-bar/blockly/Utils.js";
+import createLogsTab from "./logs.js";
+import { isPaused, onPauseChanged, setPaused, setup } from "./module.js";
+import createPerformanceTab from "./performance.js";
+import createThreadsTab from "./threads.js";
+import createTimingTab from "./timing/createTimingTab.js";
 
 const removeAllChildren = (element) => {
   while (element.firstChild) {
@@ -461,7 +461,7 @@ export default async function ({ addon, console, msg }) {
       } else {
         category = "more";
       }
-    } else if (block.opcode === "procedures_definition") {
+    } else if (block.opcode === "procedures_definition" || block.opcode === "function_definition") {
       const prototypeBlockId = block.inputs.custom_block.block;
       const prototypeBlock = getBlock(target, prototypeBlockId);
       const proccode = prototypeBlock.mutation.proccode;
@@ -469,6 +469,9 @@ export default async function ({ addon, console, msg }) {
         "%1",
         formatProcedureCode(proccode)
       );
+      category = "more";
+    } else if (block.opcode === "function_return") {
+      text = "return";
       category = "more";
     } else if (block.opcode === "control_stop") {
       // Procedural block - jsonInit not called, so we can't handle it with the fakeBlock approach
