@@ -10,8 +10,6 @@ declare namespace ScratchVM {
   }
 
   interface Thread {
-    initialStackSize?: number;
-    _goToNextBlock: ScratchVM.Thread["goToNextBlock"];
     [sym: symbol]: unknown;
   }
 
