@@ -26,11 +26,11 @@ import { InputType } from "./encode/block.js";
  * @yields {string}
  */
 export function* validate(blocks) {
-    const { blockIds, referencesByBlockId } = buildValidationIndex(blocks);
-    yield* validateDanglingReferences(blockIds, referencesByBlockId);
-    yield* validateOrphans(blocks, referencesByBlockId);
-    yield* validateNextParentLinks(blocks);
-    yield* validateParentChildLinks(blocks);
+  const { blockIds, referencesByBlockId } = buildValidationIndex(blocks);
+  yield* validateDanglingReferences(blockIds, referencesByBlockId);
+  yield* validateOrphans(blocks, referencesByBlockId);
+  yield* validateNextParentLinks(blocks);
+  yield* validateParentChildLinks(blocks);
 }
 
 /**
@@ -38,11 +38,11 @@ export function* validate(blocks) {
  * @returns {Iterable<[string, BlockLike]>}
  */
 function* iterateBlocks(blocks) {
-    for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
-        if (!blockOrPrimitive || typeof blockOrPrimitive !== "object") continue;
-        if (Array.isArray(blockOrPrimitive)) continue;
-        yield [id, blockOrPrimitive];
-    }
+  for (const [id, blockOrPrimitive] of Object.entries(blocks)) {
+    if (!blockOrPrimitive || typeof blockOrPrimitive !== "object") continue;
+    if (Array.isArray(blockOrPrimitive)) continue;
+    yield [id, blockOrPrimitive];
+  }
 }
 
 /**
@@ -50,11 +50,11 @@ function* iterateBlocks(blocks) {
  * @returns {Set<string>}
  */
 function getTopLevelIds(blocks) {
-    const ids = new Set();
-    for (const [id, block] of iterateBlocks(blocks)) {
-        if (block.topLevel) ids.add(id);
-    }
-    return ids;
+  const ids = new Set();
+  for (const [id, block] of iterateBlocks(blocks)) {
+    if (block.topLevel) ids.add(id);
+  }
+  return ids;
 }
 
 /**
@@ -63,9 +63,9 @@ function getTopLevelIds(blocks) {
  * @returns {BlockLike | null}
  */
 function getBlock(blocks, id) {
-    const block = blocks[id];
-    if (!block || Array.isArray(block)) return null;
-    return /** @type {BlockLike} */ (block);
+  const block = blocks[id];
+  if (!block || Array.isArray(block)) return null;
+  return /** @type {BlockLike} */ (block);
 }
 
 /**
@@ -73,18 +73,18 @@ function getBlock(blocks, id) {
  * @returns {Iterable<string>}
  */
 function* getInputRefs(block) {
-    for (const input of Object.values(block.inputs ?? {})) {
-        if (!input) continue;
-        if (Array.isArray(input)) {
-            const type = input[0];
-            if (type !== InputType.SameShadow && type !== InputType.NoShadow && type !== InputType.DifferentShadow) continue;
-            if (typeof input[1] === "string") yield input[1];
-            if (type === InputType.DifferentShadow && typeof input[2] === "string") yield input[2];
-        } else if (typeof input === "object") {
-            if (input.block) yield input.block;
-            if (input.shadow) yield input.shadow;
-        }
+  for (const input of Object.values(block.inputs ?? {})) {
+    if (!input) continue;
+    if (Array.isArray(input)) {
+      const type = input[0];
+      if (type !== InputType.SameShadow && type !== InputType.NoShadow && type !== InputType.DifferentShadow) continue;
+      if (typeof input[1] === "string") yield input[1];
+      if (type === InputType.DifferentShadow && typeof input[2] === "string") yield input[2];
+    } else if (typeof input === "object") {
+      if (input.block) yield input.block;
+      if (input.shadow) yield input.shadow;
     }
+  }
 }
 
 /**
@@ -93,11 +93,11 @@ function* getInputRefs(block) {
  * @returns {boolean}
  */
 function parentReferencesChild(parent, childId) {
-    if (parent.next === childId) return true;
-    for (const id of getInputRefs(parent)) {
-        if (id === childId) return true;
-    }
-    return false;
+  if (parent.next === childId) return true;
+  for (const id of getInputRefs(parent)) {
+    if (id === childId) return true;
+  }
+  return false;
 }
 
 /**
@@ -117,33 +117,33 @@ function parentReferencesChild(parent, childId) {
  * @returns {ValidationIndex}
  */
 function buildValidationIndex(blocks) {
-    const blockIds = new Set();
-    /** @type {Map<string, Reference[]>} */
-    const referencesByBlockId = new Map();
+  const blockIds = new Set();
+  /** @type {Map<string, Reference[]>} */
+  const referencesByBlockId = new Map();
 
-    for (const [id] of iterateBlocks(blocks)) {
-        blockIds.add(id);
+  for (const [id] of iterateBlocks(blocks)) {
+    blockIds.add(id);
+  }
+
+  for (const [id, block] of iterateBlocks(blocks)) {
+    /** @param {string} refId @param {Reference["kind"]} kind */
+    const recordRef = (refId, kind) => {
+      if (typeof refId !== "string" || !refId) return;
+      const refs = referencesByBlockId.get(refId) ?? [];
+      refs.push({ source: id, kind });
+      referencesByBlockId.set(refId, refs);
+    };
+
+    const parent = block.parent ?? null;
+    if (parent) recordRef(parent, "parent");
+    const next = block.next ?? null;
+    if (next) recordRef(next, "next");
+    for (const refId of getInputRefs(block)) {
+      recordRef(refId, "input");
     }
+  }
 
-    for (const [id, block] of iterateBlocks(blocks)) {
-        /** @param {string} refId @param {Reference["kind"]} kind */
-        const recordRef = (refId, kind) => {
-            if (typeof refId !== "string" || !refId) return;
-            const refs = referencesByBlockId.get(refId) ?? [];
-            refs.push({ source: id, kind });
-            referencesByBlockId.set(refId, refs);
-        };
-
-        const parent = block.parent ?? null;
-        if (parent) recordRef(parent, "parent");
-        const next = block.next ?? null;
-        if (next) recordRef(next, "next");
-        for (const refId of getInputRefs(block)) {
-            recordRef(refId, "input");
-        }
-    }
-
-    return { blockIds, referencesByBlockId };
+  return { blockIds, referencesByBlockId };
 }
 
 /**
@@ -151,10 +151,10 @@ function buildValidationIndex(blocks) {
  * @param {Map<string, Reference[]>} referencesByBlockId
  */
 function* validateDanglingReferences(blockIds, referencesByBlockId) {
-    for (const [refId, refs] of referencesByBlockId) {
-        if (blockIds.has(refId)) continue;
-        yield `Dangling reference: block "${refId}" is referenced but does not exist. Sources: ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`;
-    }
+  for (const [refId, refs] of referencesByBlockId) {
+    if (blockIds.has(refId)) continue;
+    yield `Dangling reference: block "${refId}" is referenced but does not exist. Sources: ${refs.map((r) => `${r.source} (${r.kind})`).join(", ")}`;
+  }
 }
 
 /**
@@ -162,38 +162,38 @@ function* validateDanglingReferences(blockIds, referencesByBlockId) {
  * @param {Map<string, { source: string; kind: "parent" | "next" | "input" }[]>} referencesByBlockId
  */
 function* validateOrphans(blocks, referencesByBlockId) {
-    const topLevelIds = getTopLevelIds(blocks);
-    for (const [id, block] of iterateBlocks(blocks)) {
-        if (topLevelIds.has(id)) continue;
-        if (referencesByBlockId.has(id)) continue;
-        yield `Orphan block: "${id}" (opcode: ${block.opcode ?? "unknown"}) is neither top-level nor referenced`;
-    }
+  const topLevelIds = getTopLevelIds(blocks);
+  for (const [id, block] of iterateBlocks(blocks)) {
+    if (topLevelIds.has(id)) continue;
+    if (referencesByBlockId.has(id)) continue;
+    yield `Orphan block: "${id}" (opcode: ${block.opcode ?? "unknown"}) is neither top-level nor referenced`;
+  }
 }
 
 /**
  * @param {BlockList} blocks
  */
 function* validateNextParentLinks(blocks) {
-    for (const [id, block] of iterateBlocks(blocks)) {
-        const nextId = block.next ?? null;
-        if (!nextId) continue;
-        const nextBlock = getBlock(blocks, nextId);
-        if (!nextBlock) continue;
-        if ((nextBlock.parent ?? null) === id) continue;
-        yield `Broken next→parent link: block "${id}" has next="${nextId}", but that block has parent="${nextBlock.parent ?? null}" (expected "${id}")`;
-    }
+  for (const [id, block] of iterateBlocks(blocks)) {
+    const nextId = block.next ?? null;
+    if (!nextId) continue;
+    const nextBlock = getBlock(blocks, nextId);
+    if (!nextBlock) continue;
+    if ((nextBlock.parent ?? null) === id) continue;
+    yield `Broken next→parent link: block "${id}" has next="${nextId}", but that block has parent="${nextBlock.parent ?? null}" (expected "${id}")`;
+  }
 }
 
 /**
  * @param {BlockList} blocks
  */
 function* validateParentChildLinks(blocks) {
-    for (const [id, block] of iterateBlocks(blocks)) {
-        const parentId = block.parent ?? null;
-        if (!parentId) continue;
-        const parentBlock = getBlock(blocks, parentId);
-        if (!parentBlock) continue;
-        if (parentReferencesChild(parentBlock, id)) continue;
-        yield `Broken parent→child link: block "${id}" has parent="${parentId}", but parent does not reference "${id}" in next or inputs`;
-    }
+  for (const [id, block] of iterateBlocks(blocks)) {
+    const parentId = block.parent ?? null;
+    if (!parentId) continue;
+    const parentBlock = getBlock(blocks, parentId);
+    if (!parentBlock) continue;
+    if (parentReferencesChild(parentBlock, id)) continue;
+    yield `Broken parent→child link: block "${id}" has parent="${parentId}", but parent does not reference "${id}" in next or inputs`;
+  }
 }

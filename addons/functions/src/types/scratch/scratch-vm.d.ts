@@ -186,7 +186,7 @@ declare namespace ScratchVM {
       // Argument name
       string[],
       // Argument IDs
-      string[]
+      string[],
     ];
 
     getProcedureParamNamesIdsAndDefaults(procedureCode: string): [
@@ -195,7 +195,7 @@ declare namespace ScratchVM {
       // Argument IDs
       string[],
       // Argument defaults
-      unknown[]
+      unknown[],
     ];
 
     duplicate(): Blocks;
@@ -991,32 +991,32 @@ declare namespace ScratchVM {
     SCRIPT_GLOW_ON: [
       {
         id: string;
-      }
+      },
     ];
 
     SCRIPT_GLOW_OFF: [
       {
         id: string;
-      }
+      },
     ];
 
     BLOCK_GLOW_ON: [
       {
         id: string;
-      }
+      },
     ];
 
     BLOCK_GLOW_OFF: [
       {
         id: string;
-      }
+      },
     ];
 
     PROJECT_START: [
       {
         id: string;
         value: string;
-      }
+      },
     ];
 
     PROJECT_RUN_START: [];
@@ -1029,21 +1029,21 @@ declare namespace ScratchVM {
       {
         id: string;
         value: string;
-      }
+      },
     ];
 
     MONITORS_UPDATE: [MonitorMap];
 
     BLOCK_DRAG_UPDATE: [
       // Are blocks over GUI?
-      boolean
+      boolean,
     ];
 
     BLOCK_DRAG_END: [
       // Blocks being dragged to the GUI
       unknown[],
       // Original ID of top block being dragged
-      string
+      string,
     ];
 
     EXTENSION_ADDED: [ExtensionInfo];
@@ -1052,7 +1052,7 @@ declare namespace ScratchVM {
       {
         name: string;
         implementation: unknown;
-      }
+      },
     ];
 
     BLOCKSINFO_UPDATE: [ExtensionInfo];
@@ -1071,21 +1071,21 @@ declare namespace ScratchVM {
       {
         message: string;
         extensionId: string;
-      }
+      },
     ];
 
     PERIPHERAL_CONNECTION_LOST_ERROR: [
       {
         message: string;
         extensionId: string;
-      }
+      },
     ];
 
     PERIPHERAL_SCAN_TIMEOUT: [];
 
     MIC_LISTENING: [
       // Is the mic listening?
-      boolean
+      boolean,
     ];
 
     RUNTIME_STARTED: [];
@@ -1094,7 +1094,7 @@ declare namespace ScratchVM {
 
     HAS_CLOUD_DATA_UPDATE: [
       // Has cloud data?
-      boolean
+      boolean,
     ];
   }
 
@@ -1104,8 +1104,10 @@ declare namespace ScratchVM {
     STOP_FOR_TARGET: [
       // Target whose scripts are being stopped
       Target,
-      // Optional thread exception to keep running
-      Thread | undefined
+      (
+        // Optional thread exception to keep running
+        Thread | undefined
+      ),
     ];
 
     PROJECT_LOADED: [];
@@ -1114,7 +1116,7 @@ declare namespace ScratchVM {
 
     TARGETS_UPDATE: [
       // Whether to emit project changed
-      boolean
+      boolean,
     ];
 
     BLOCKS_NEED_UPDATE: [];
@@ -1125,7 +1127,7 @@ declare namespace ScratchVM {
       // The new target
       Target,
       // The original target, if any. This will be set for clones.
-      Target?
+      Target?,
     ];
 
     targetWasRemoved: [Target];
@@ -1424,13 +1426,13 @@ declare namespace ScratchVM {
       {
         targetList: Serialized.Target[];
         editingTarget: string | null;
-      }
+      },
     ];
 
     workspaceUpdate: [
       {
         xml: string;
-      }
+      },
     ];
 
     playgroundData: [
@@ -1438,7 +1440,7 @@ declare namespace ScratchVM {
         blocks: Blocks;
         // Stringified JSON of Thread[]
         thread: string;
-      }
+      },
     ];
   }
 

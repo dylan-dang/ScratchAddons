@@ -2,49 +2,47 @@ import { FunctionBlockType } from "../shared.js";
 import { assert } from "../utils.js";
 import { BOOLEAN_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
 
-
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
 const CATEGORY_KEY = "FUNCTION";
 
 /** @param {ScratchBlocks.Blockly} Blockly */
 function createXmlParser(Blockly) {
-    /**
-     * convert template strings to dom
-     * @param {TemplateStringsArray} strings
-     * @param {...any} values
-     * @returns {Node}
-     */
-    function xml(strings, ...values) {
-        const interpolated = strings
-            .map((str, i) => {
-                const value = values[i];
-                if (value === undefined || value === null) return str;
-                if (typeof value === "object") return `${str}${JSON.stringify(value)}`;
-                if (typeof value === "function") return `${str}${value.toString()}`;
-                return `${str}${value}`;
-            })
-            .join("")
-            .trim();
-        return Blockly.Xml.textToDom(interpolated);
-    }
-    return { xml };
+  /**
+   * convert template strings to dom
+   * @param {TemplateStringsArray} strings
+   * @param {...any} values
+   * @returns {Node}
+   */
+  function xml(strings, ...values) {
+    const interpolated = strings
+      .map((str, i) => {
+        const value = values[i];
+        if (value === undefined || value === null) return str;
+        if (typeof value === "object") return `${str}${JSON.stringify(value)}`;
+        if (typeof value === "function") return `${str}${value.toString()}`;
+        return `${str}${value}`;
+      })
+      .join("")
+      .trim();
+    return Blockly.Xml.textToDom(interpolated);
+  }
+  return { xml };
 }
-
 
 /** @param {FunctionContext} context */
 export function patchCategory({ addon, Blockly, vm }) {
-    // add category
-    const { xml } = createXmlParser(Blockly);
-    const originalGetBlocksXML = vm.runtime.getBlocksXML;
+  // add category
+  const { xml } = createXmlParser(Blockly);
+  const originalGetBlocksXML = vm.runtime.getBlocksXML;
 
-    /** @param {ScratchVM.Target} target */
-    vm.runtime.getBlocksXML = function (target) {
-        const result = originalGetBlocksXML.call(this, target);
+  /** @param {ScratchVM.Target} target */
+  vm.runtime.getBlocksXML = function (target) {
+    const result = originalGetBlocksXML.call(this, target);
 
-        result.unshift({
-            id: "sa-functions",
-            xml: /* xml */ `
+    result.unshift({
+      id: "sa-functions",
+      xml: /* xml */ `
             <category
               id="sa-functions"
               name="Functions"
@@ -53,15 +51,15 @@ export function patchCategory({ addon, Blockly, vm }) {
               custom="${CATEGORY_KEY}"
               iconURI="${FUNCTION_ICON}"
             />`,
-        });
+    });
 
-        return result;
-    };
+    return result;
+  };
 
-    const modal = addon.tab.createModal("Make a Function", { useEditorClasses: true });
-    modal.container.style.width = "700px";
-    // we don't have to worry about sanitizing the html since we control the content so XSS is not an issue
-    modal.content.innerHTML = /* html */ `
+  const modal = addon.tab.createModal("Make a Function", { useEditorClasses: true });
+  modal.container.style.width = "700px";
+  // we don't have to worry about sanitizing the html since we control the content so XSS is not an issue
+  modal.content.innerHTML = /* html */ `
         <div id="sa-function-workspace" class="${addon.tab.scratchClass("custom-procedures_workspace", "box_box")}"></div>
         <div class="${addon.tab.scratchClass("custom-procedures_body", "box_box")}">
           <div class="${addon.tab.scratchClass("custom-procedures_options-row")}">
@@ -99,158 +97,160 @@ export function patchCategory({ addon, Blockly, vm }) {
             </button>
           </div>
         </div>`;
-    // populate category
-    const workspace = addon.tab.traps.getWorkspace();
-    workspace.registerToolboxCategoryCallback(
-        CATEGORY_KEY,
-      /** @param {any} workspace */(workspace) => {
-            const CALLBACK_KEY = "CREATE_FUNCTION";
-            workspace.registerButtonCallback(CALLBACK_KEY, () => {
-                modal.open();
-                const blocksRef = modal.content.querySelector("#sa-function-workspace");
-                assert(blocksRef, "Blocks reference not found");
-                const numberOrTextInput = modal.content.querySelector("#sa-function-number-or-text-input");
-                assert(numberOrTextInput, "Number or text input not found");
-                const booleanInput = modal.content.querySelector("#sa-function-boolean-input");
-                assert(booleanInput, "Boolean input not found");
-                const labelInput = modal.content.querySelector("#sa-function-label-input");
-                assert(labelInput, "Label input not found");
-                const cancelButton = modal.content.querySelector("#sa-function-cancel-button");
-                assert(cancelButton, "Cancel button not found");
-                const okButton = modal.content.querySelector("#sa-function-ok-button");
-                assert(okButton, "OK button not found");
+  // populate category
+  const workspace = addon.tab.traps.getWorkspace();
+  workspace.registerToolboxCategoryCallback(
+    CATEGORY_KEY,
+    /** @param {any} workspace */ (workspace) => {
+      const CALLBACK_KEY = "CREATE_FUNCTION";
+      workspace.registerButtonCallback(CALLBACK_KEY, () => {
+        modal.open();
+        const blocksRef = modal.content.querySelector("#sa-function-workspace");
+        assert(blocksRef, "Blocks reference not found");
+        const numberOrTextInput = modal.content.querySelector("#sa-function-number-or-text-input");
+        assert(numberOrTextInput, "Number or text input not found");
+        const booleanInput = modal.content.querySelector("#sa-function-boolean-input");
+        assert(booleanInput, "Boolean input not found");
+        const labelInput = modal.content.querySelector("#sa-function-label-input");
+        assert(labelInput, "Label input not found");
+        const cancelButton = modal.content.querySelector("#sa-function-cancel-button");
+        assert(cancelButton, "Cancel button not found");
+        const okButton = modal.content.querySelector("#sa-function-ok-button");
+        assert(okButton, "OK button not found");
 
-                const oldDefaultToolbox = Blockly.Blocks.defaultToolbox;
-                Blockly.Blocks.defaultToolbox = null;
-                const workspace = Blockly.inject(blocksRef, {
-                    zoom: {
-                        controls: false,
-                        wheel: false,
-                        startScale: 0.9,
-                    },
-                    comments: false,
-                    collapse: false,
-                    scrollbars: true,
-                    media: "/static/blocks-media/default/",
-                });
-                Blockly.Blocks.defaultToolbox = oldDefaultToolbox;
-                const mutationRoot = workspace.newBlock(FunctionBlockType.DECLARATION);
-                mutationRoot.setMovable(false);
-                mutationRoot.setDeletable(false);
-                mutationRoot.contextMenu = false;
+        const oldDefaultToolbox = Blockly.Blocks.defaultToolbox;
+        Blockly.Blocks.defaultToolbox = null;
+        const workspace = Blockly.inject(blocksRef, {
+          zoom: {
+            controls: false,
+            wheel: false,
+            startScale: 0.9,
+          },
+          comments: false,
+          collapse: false,
+          scrollbars: true,
+          media: "/static/blocks-media/default/",
+        });
+        Blockly.Blocks.defaultToolbox = oldDefaultToolbox;
+        const mutationRoot = workspace.newBlock(FunctionBlockType.DECLARATION);
+        mutationRoot.setMovable(false);
+        mutationRoot.setDeletable(false);
+        mutationRoot.contextMenu = false;
 
-                workspace.addChangeListener(() => {
-                    mutationRoot.onChangeFn();
-                    const metrics = workspace.getMetrics();
-                    const { x, y } = mutationRoot.getRelativeToSurfaceXY();
-                    const dy = metrics.viewHeight / 2 - mutationRoot.height / 2 - y;
-                    // If the procedure declaration is wider than the view width,
-                    // keep the right-hand side of the procedure in view.
-                    const dx =
-                        mutationRoot.width > metrics.viewWidth
-                            ? metrics.viewWidth - mutationRoot.width - x
-                            : metrics.viewWidth / 2 - mutationRoot.width / 2 - x;
-                    mutationRoot.moveBy(dx, dy);
-                });
+        workspace.addChangeListener(() => {
+          mutationRoot.onChangeFn();
+          const metrics = workspace.getMetrics();
+          const { x, y } = mutationRoot.getRelativeToSurfaceXY();
+          const dy = metrics.viewHeight / 2 - mutationRoot.height / 2 - y;
+          // If the procedure declaration is wider than the view width,
+          // keep the right-hand side of the procedure in view.
+          const dx =
+            mutationRoot.width > metrics.viewWidth
+              ? metrics.viewWidth - mutationRoot.width - x
+              : metrics.viewWidth / 2 - mutationRoot.width / 2 - x;
+          mutationRoot.moveBy(dx, dy);
+        });
 
-                function handleAddTextNumber() {
-                    mutationRoot.addStringNumberExternal();
-                }
-                function handleAddBoolean() {
-                    mutationRoot.addBooleanExternal();
-                }
-                function handleAddLabel() {
-                    mutationRoot.addLabelExternal();
-                }
+        function handleAddTextNumber() {
+          mutationRoot.addStringNumberExternal();
+        }
+        function handleAddBoolean() {
+          mutationRoot.addBooleanExternal();
+        }
+        function handleAddLabel() {
+          mutationRoot.addLabelExternal();
+        }
 
-                function handleOk() {
-                    assert(mutationRoot.mutationToDom, "Mutation root mutation to dom is required");
-                    const workspace = addon.tab.traps.getWorkspace();
-                    const blockDom = xml`<block type="${FunctionBlockType.DEFINITION}" gap="16">
+        function handleOk() {
+          assert(mutationRoot.mutationToDom, "Mutation root mutation to dom is required");
+          const workspace = addon.tab.traps.getWorkspace();
+          const blockDom = xml`<block type="${FunctionBlockType.DEFINITION}" gap="16">
               <value name="custom_block">
                 <shadow type="${FunctionBlockType.PROTOTYPE}">
                   ${Blockly.Xml.domToText(mutationRoot.mutationToDom(true))}
                 </shadow>
               </value>
             </block>`;
-                    assert(blockDom instanceof Element, "Block DOM should be an element");
-                    Blockly.Events.setGroup(true);
-                    /** @type {ScratchBlocks.Block} */
-                    const block = Blockly.Xml.domToBlock(blockDom, workspace);
-                    const scale = workspace.scale;
-                    const posX = 30 - workspace.scrollX;
-                    const posY = 30 - workspace.scrollY;
-                    block.moveBy(posX / scale, posY / scale);
-                    block.scheduleSnapAndBump();
-                    Blockly.Events.setGroup(false);
-                    // TODO update when '_' is removed;
-                    // @ts-ignore
-                    workspace.refreshToolboxSelection_();
-                    handleClose();
-                }
+          assert(blockDom instanceof Element, "Block DOM should be an element");
+          Blockly.Events.setGroup(true);
+          /** @type {ScratchBlocks.Block} */
+          const block = Blockly.Xml.domToBlock(blockDom, workspace);
+          const scale = workspace.scale;
+          const posX = 30 - workspace.scrollX;
+          const posY = 30 - workspace.scrollY;
+          block.moveBy(posX / scale, posY / scale);
+          block.scheduleSnapAndBump();
+          Blockly.Events.setGroup(false);
+          // TODO update when '_' is removed;
+          // @ts-ignore
+          workspace.refreshToolboxSelection_();
+          handleClose();
+        }
 
-                function handleClose() {
-                    modal.close();
-                    workspace.dispose();
-                    numberOrTextInput?.removeEventListener("click", handleAddTextNumber);
-                    booleanInput?.removeEventListener("click", handleAddBoolean);
-                    labelInput?.removeEventListener("click", handleAddLabel);
-                    modal.backdrop.removeEventListener("click", handleClose);
-                    modal.closeButton.removeEventListener("click", handleClose);
-                    cancelButton?.removeEventListener("click", handleClose);
-                    okButton?.removeEventListener("click", handleOk);
-                }
+        function handleClose() {
+          modal.close();
+          workspace.dispose();
+          numberOrTextInput?.removeEventListener("click", handleAddTextNumber);
+          booleanInput?.removeEventListener("click", handleAddBoolean);
+          labelInput?.removeEventListener("click", handleAddLabel);
+          modal.backdrop.removeEventListener("click", handleClose);
+          modal.closeButton.removeEventListener("click", handleClose);
+          cancelButton?.removeEventListener("click", handleClose);
+          okButton?.removeEventListener("click", handleOk);
+        }
 
-                numberOrTextInput.addEventListener("click", handleAddTextNumber);
-                booleanInput.addEventListener("click", handleAddBoolean);
-                labelInput.addEventListener("click", handleAddLabel);
-                modal.closeButton.addEventListener("click", handleClose);
-                modal.backdrop.addEventListener("click", handleClose);
-                cancelButton.addEventListener("click", handleClose);
-                okButton.addEventListener("click", handleOk);
+        numberOrTextInput.addEventListener("click", handleAddTextNumber);
+        booleanInput.addEventListener("click", handleAddBoolean);
+        labelInput.addEventListener("click", handleAddLabel);
+        modal.closeButton.addEventListener("click", handleClose);
+        modal.backdrop.addEventListener("click", handleClose);
+        cancelButton.addEventListener("click", handleClose);
+        okButton.addEventListener("click", handleOk);
 
-                // mutationRoot.domToMutation();
-                mutationRoot.procCode_ = "function name";
-                mutationRoot.setWarp(true);
-                mutationRoot.updateDisplay_();
-                mutationRoot.initSvg();
-                mutationRoot.render();
-                setTimeout(() => mutationRoot.focusLastEditor_());
-            });
+        // mutationRoot.domToMutation();
+        mutationRoot.procCode_ = "function name";
+        mutationRoot.setWarp(true);
+        mutationRoot.updateDisplay_();
+        mutationRoot.initSvg();
+        mutationRoot.render();
+        setTimeout(() => mutationRoot.focusLastEditor_());
+      });
 
-            const calls = workspace
-                .getAllBlocks()
-                .filter(/** @param {any} block */(block) => block.type === FunctionBlockType.PROTOTYPE)
-                .map(/** @param {any} block */(block) => block.mutationToDom(/* opt_generateShadows */ true))
-                .filter(Boolean)
-                .sort(
-          /** @param {any} a @param {any} b */(a, b) =>
-                        Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
-                )
-                .map(/** @param {any} mutation */(mutation) => {
-                    const block = document.createElementNS(null, "block");
-                    block.setAttribute("type", FunctionBlockType.CALL);
-                    block.setAttribute("gap", "16");
-                    block.appendChild(mutation);
-                    return block;
-                });
+      const calls = workspace
+        .getAllBlocks()
+        .filter(/** @param {any} block */ (block) => block.type === FunctionBlockType.PROTOTYPE)
+        .map(/** @param {any} block */ (block) => block.mutationToDom(/* opt_generateShadows */ true))
+        .filter(Boolean)
+        .sort(
+          /** @param {any} a @param {any} b */ (a, b) =>
+            Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
+        )
+        .map(
+          /** @param {any} mutation */ (mutation) => {
+            const block = document.createElementNS(null, "block");
+            block.setAttribute("type", FunctionBlockType.CALL);
+            block.setAttribute("gap", "16");
+            block.appendChild(mutation);
+            return block;
+          }
+        );
 
-            return [
-                xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
-                calls,
-                calls.length > 0
-                    ? [
-                        xml`<sep gap="36" />`,
-                        xml`<block type="${FunctionBlockType.RETURN}">
+      return [
+        xml`<button text="Make a Function" callbackKey="${CALLBACK_KEY}" />`,
+        calls,
+        calls.length > 0
+          ? [
+              xml`<sep gap="36" />`,
+              xml`<block type="${FunctionBlockType.RETURN}">
                     <value name="ITEM">
                       <shadow type="text">
                         <field name="TEXT" />
                       </shadow>
                     </value>
                   </block>`,
-                    ]
-                    : [],
-            ].flat();
-        }
-    );
+            ]
+          : [],
+      ].flat();
+    }
+  );
 }

@@ -5,7 +5,7 @@
  * @return {asserts condition}
  */
 export function assert(condition, message) {
-    if (!condition) throw new Error(message || "Assertion failed");
+  if (!condition) throw new Error(message || "Assertion failed");
 }
 
 /**
@@ -15,11 +15,11 @@ export function assert(condition, message) {
  * @param {Function} replacement
  */
 export function rebindOnce(target, methodName, replacement) {
-    const original = target[methodName];
-    target[methodName] = function () {
-        // Restore the original method
-        target[methodName] = original;
-        // Call the replacement with the provided arguments
-        return replacement.apply(this, arguments);
-    };
+  const original = target[methodName];
+  target[methodName] = function () {
+    // Restore the original method
+    target[methodName] = original;
+    // Call the replacement with the provided arguments
+    return replacement.apply(this, arguments);
+  };
 }

@@ -17,7 +17,6 @@ import { patchVM } from "./vm.js";
 
 /** @param {Userscript.Utilities} utils */
 export default async function ({ addon }) {
-
   const Blockly = await addon.tab.traps.getBlockly();
   await addon.tab.scratchClassReady();
   const vm = addon.tab.traps.vm;

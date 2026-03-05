@@ -6,7 +6,6 @@ import { SerializedBlockGraph } from "./graph.js";
 
 /** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
 
-
 class Encoder {
   /**
    * @param {{ Blockly: ScratchBlocks.Blockly, vm: object }} dependencies
@@ -95,24 +94,26 @@ class Encoder {
 
       const lastBlock = definition.tail();
 
-      if ([
-        "control_delete_this_clone",
-        "control_forever",
-        FunctionBlockType.RETURN,
-        "control_stop",
-      ].includes(lastBlock.ref.opcode)) continue;
+      if (
+        ["control_delete_this_clone", "control_forever", FunctionBlockType.RETURN, "control_stop"].includes(
+          lastBlock.ref.opcode
+        )
+      )
+        continue;
       if (lastBlock.ref.mutation?.hasnext === "false") continue;
 
-      lastBlock.insertAfter(graph.register({
-        opcode: "data_insertatlist",
-        inputs: {
-          ITEM: [InputType.SameShadow, [InputType.Text, ""]],
-          INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
-        },
-        fields: { LIST: [Signature.STACK, Signature.STACK] },
-        shadow: false,
-        topLevel: false,
-      }));
+      lastBlock.insertAfter(
+        graph.register({
+          opcode: "data_insertatlist",
+          inputs: {
+            ITEM: [InputType.SameShadow, [InputType.Text, ""]],
+            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
+          },
+          fields: { LIST: [Signature.STACK, Signature.STACK] },
+          shadow: false,
+          topLevel: false,
+        })
+      );
     }
   }
 
@@ -131,18 +132,20 @@ class Encoder {
         fields: { LIST: [Signature.STACK, Signature.STACK] },
       });
 
-      returnBlock.insertAfter(graph.register({
-        opcode: "control_stop",
-        fields: { STOP_OPTION: ["this script", null] },
-        inputs: {},
-        mutation: {
-          children: [],
-          hasnext: "false",
-          tagName: "mutation",
-        },
-        shadow: false,
-        topLevel: false,
-      }));
+      returnBlock.insertAfter(
+        graph.register({
+          opcode: "control_stop",
+          fields: { STOP_OPTION: ["this script", null] },
+          inputs: {},
+          mutation: {
+            children: [],
+            hasnext: "false",
+            tagName: "mutation",
+          },
+          shadow: false,
+          topLevel: false,
+        })
+      );
     }
   }
 
@@ -179,22 +182,25 @@ class Encoder {
    */
   getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
     if (block.ref.opcode === FunctionBlockType.CALL) {
-      block.swap(graph.register({
-        opcode: "data_itemoflist",
-        mutation: undefined,
-        fields: { LIST: [Signature.STACK, Signature.STACK] },
-        inputs: {
-          INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
-        },
-        shadow: false,
-        topLevel: false
-      }));
+      block.swap(
+        graph.register({
+          opcode: "data_itemoflist",
+          mutation: undefined,
+          fields: { LIST: [Signature.STACK, Signature.STACK] },
+          inputs: {
+            INDEX: [InputType.SameShadow, [InputType.IntegerNumber, String(ctx.counter++)]],
+          },
+          shadow: false,
+          topLevel: false,
+        })
+      );
       return [block];
     }
 
     /** @type {string[]} */
     const argumentIds = [
-      ...(block.getBlockDefinition()
+      ...(block
+        .getBlockDefinition()
         .args0?.filter(({ type }) => type === "input_value")
         .map(({ name }) => name) ?? []),
       ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
@@ -203,12 +209,12 @@ class Encoder {
     /** @type {RegisteredBlock[]} */
     const inputBlocks = argumentIds
       .map((argId) => block.ref.inputs[argId])
-      .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
+      .filter(/** @returns {primitive is Serialized.Primitive} */ (primitive) => !!primitive)
       .map(([, input]) => {
         if (typeof input !== "string") return;
         return graph.getBlock(input);
       })
-      .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
+      .filter(/** @returns {block is NonNullable<typeof block>} */ (block) => !!block);
 
     return inputBlocks.flatMap((block) => this.getAndReplaceCalls(block, graph, ctx));
   }
@@ -245,8 +251,7 @@ class Encoder {
       stmt.insertBefore(call);
     }
 
-    const isCall =
-      stmt.ref.opcode === "procedures_call" && stmt.ref.mutation?.proccode?.startsWith(Signature.FUNCTION);
+    const isCall = stmt.ref.opcode === "procedures_call" && stmt.ref.mutation?.proccode?.startsWith(Signature.FUNCTION);
     const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields?.LIST?.[0] === Signature.STACK;
 
     const deleter = graph.register({
@@ -337,7 +342,7 @@ class Encoder {
         argumentids,
         warp: "true",
       },
-      topLevel: false
+      topLevel: false,
     });
     if (scope) {
       atomicCall.copyInputs(scope);
