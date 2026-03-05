@@ -5,7 +5,6 @@ import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_O
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 /** @typedef {import("../transform/decode/decoder.js").Decoder} Decoder */
 
-
 const CATEGORY_KEY = "FUNCTION";
 
 /** @param {ScratchBlocks.Blockly} Blockly */
@@ -103,7 +102,7 @@ export function patchCategory({ addon, Blockly, vm }) {
   const workspace = addon.tab.traps.getWorkspace();
   workspace.registerToolboxCategoryCallback(
     CATEGORY_KEY,
-    /** @param {any} workspace */(workspace) => {
+    /** @param {any} workspace */ (workspace) => {
       const CALLBACK_KEY = "CREATE_FUNCTION";
       workspace.registerButtonCallback(CALLBACK_KEY, () => {
         modal.open();
@@ -220,15 +219,15 @@ export function patchCategory({ addon, Blockly, vm }) {
 
       const calls = workspace
         .getAllBlocks()
-        .filter(/** @param {any} block */(block) => block.type === FunctionBlockType.PROTOTYPE)
-        .map(/** @param {any} block */(block) => block.mutationToDom(/* opt_generateShadows */ true))
+        .filter(/** @param {any} block */ (block) => block.type === FunctionBlockType.PROTOTYPE)
+        .map(/** @param {any} block */ (block) => block.mutationToDom(/* opt_generateShadows */ true))
         .filter(Boolean)
         .sort(
-          /** @param {any} a @param {any} b */(a, b) =>
+          /** @param {any} a @param {any} b */ (a, b) =>
             Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
         )
         .map(
-          /** @param {any} mutation */(mutation) => {
+          /** @param {any} mutation */ (mutation) => {
             const block = document.createElementNS(null, "block");
             block.setAttribute("type", FunctionBlockType.CALL);
             block.setAttribute("gap", "16");
@@ -242,21 +241,20 @@ export function patchCategory({ addon, Blockly, vm }) {
         calls,
         calls.length > 0
           ? [
-            xml`<sep gap="36" />`,
-            xml`<block type="${FunctionBlockType.RETURN}">
+              xml`<sep gap="36" />`,
+              xml`<block type="${FunctionBlockType.RETURN}">
                     <value name="ITEM">
                       <shadow type="text">
                         <field name="TEXT" />
                       </shadow>
                     </value>
                   </block>`,
-          ]
+            ]
           : [],
       ].flat();
     }
   );
 }
-
 
 /**
  * @param {FunctionContext} context

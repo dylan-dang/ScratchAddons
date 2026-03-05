@@ -47,10 +47,16 @@ export class Decoder {
   }
 
   transpileTargets() {
-    for (const target of this.vm.runtime.targets) {
-      this.transpileTarget(target);
+    const snapshot = this.vm.toJSON();
+    try {
+      for (const target of this.vm.runtime.targets) {
+        this.transpileTarget(target);
+      }
+      this.vm.refreshWorkspace();
+    } catch (error) {
+      console.error("Error transpiling targets: ", error);
+      this.vm.loadProject(snapshot);
     }
-    this.vm.refreshWorkspace();
   }
 
   /**
