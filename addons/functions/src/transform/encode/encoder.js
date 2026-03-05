@@ -29,7 +29,7 @@ class Encoder {
     this.transpileReturns(graph);
     this.transpileCalls(target, graph);
     for (const error of validate(graph.blocks)) {
-      console.warn(error);
+      console.warn("Encoding graph validation error: ", error);
     }
   }
 

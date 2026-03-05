@@ -1,9 +1,25 @@
-/// <reference path="../../types/scratch/scratch-vm.d.ts" />
 import { FunctionBlockType, Signature } from "../../shared.js";
 import { assert } from "../../utils.js";
 import { validate } from "../validator.js";
 
 /** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
+
+/**
+ * @typedef {Object} FoldCallFoldOperation
+ * @property {"fold"} type
+ * @property {ScratchVM.Block} stackRef
+ * @property {ScratchVM.Block & { mutation: ScratchVM.ProcedureCallMutation }} correspondingCall
+ */
+
+/**
+ * @typedef {Object} FoldCallDeleteDeleterOperation
+ * @property {"deleteDeleter"} type
+ * @property {ScratchVM.Block} deleter
+ */
+
+/**
+ * @typedef {FoldCallFoldOperation | FoldCallDeleteDeleterOperation} FoldCallOperation
+ */
 
 export class Decoder {
     /**
@@ -24,7 +40,7 @@ export class Decoder {
         this.transpileDefinitions(blocks);
         this.transpileReturns(blocks);
         for (const error of validate(blocks._blocks)) {
-            console.warn(error);
+            console.warn("Decoding graph validation error: ", error);
         }
 
         blocks.forceNoGlow = oldForceNoGlow;
@@ -122,34 +138,99 @@ export class Decoder {
     /**
      * @private
      * @param {ScratchVM.Blocks} blocks
-     * @param {string} blockId
-     * @returns {ScratchVM.Block | null}
+     * @param {ScratchVM.Block} block
+     * @returns {ScratchVM.Block[]}
      */
-    foldCall(blocks, blockId) {
-        /** @type {ScratchVM.Block[]} */
+    getSortedStackReferences(blocks, block) {
+        return this.getStackReferences(blocks, block).sort((a, b) => {
+            const indexA = a.inputs.INDEX?.block;
+            const indexB = b.inputs.INDEX?.block;
+            assert(indexA && indexB, "Stack reference block missing INDEX input");
+            const blockA = blocks.getBlock(indexA);
+            const blockB = blocks.getBlock(indexB);
+            assert(blockA && blockB, "Stack reference INDEX block not found");
+            const valA = Number.parseInt(blockA.fields.NUM.value);
+            const valB = Number.parseInt(blockB.fields.NUM.value);
+            return valB - valA;
+        });
+    }
+
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {string} blockId
+     * @returns {{ foldedStatement: ScratchVM.Block, operations: FoldCallOperation[] }}
+     */
+    verifyFoldCall(blocks, blockId) {
+        /** @type {(ScratchVM.Block & { mutation: ScratchVM.ProcedureCallMutation })[]} */
         const callStack = [];
-        /** @type {ScratchVM.Block | null | undefined} */
         let curr = blocks.getBlock(blockId);
         /** @type {ScratchVM.Block | null} */
         let foldedStatement = null;
+        /** @type {FoldCallOperation[]} */
+        const operations = [];
+
         do {
-            if (!curr) throw new Error("Unexpected end of atomic function call stack");
-            const stackRefs = this.getStackReferences(blocks, curr).sort((a, b) => {
-                const indexA = a.inputs.INDEX?.block;
-                const indexB = b.inputs.INDEX?.block;
-                assert(indexA && indexB, "Stack reference block missing INDEX input");
-                const blockA = blocks.getBlock(indexA);
-                const blockB = blocks.getBlock(indexB);
-                assert(blockA && blockB, "Stack reference INDEX block not found");
-                const valA = Number.parseInt(blockA.fields.NUM.value);
-                const valB = Number.parseInt(blockB.fields.NUM.value);
-                return valB - valA;
-            });
+            assert(curr, "Unexpected end of atomic function call stack");
+            const stackRefs = this.getSortedStackReferences(blocks, curr);
+
             for (const stackRef of stackRefs) {
                 const correspondingCall = callStack.pop();
-                assert(correspondingCall, "Malformed atomic call stack: stack reference without matching call");
-                assert(correspondingCall.mutation, "Procedure call block missing mutation");
-                for (const input of Object.values(stackRef.inputs)) {
+                assert(correspondingCall, "Malformed call stack: stack reference without matching call");
+                operations.push({ type: "fold", stackRef, correspondingCall });
+            }
+
+            if (stackRefs.length) {
+                foldedStatement = curr;
+                assert(curr.next, "Folded statement missing next block");
+                let blockToRemove = blocks.getBlock(curr.next);
+                assert(blockToRemove, "Stack deleter block not found");
+
+                /** @type {ScratchVM.Block | undefined} */
+                let deleter = blockToRemove;
+                if (blockToRemove.opcode === "control_repeat") {
+                    assert(blockToRemove.inputs.TIMES?.block, "Repeater missing TIMES input");
+                    const timesBlock = blocks.getBlock(blockToRemove.inputs.TIMES?.block);
+                    assert(timesBlock, "missing TIMES block");
+                    assert(timesBlock.opcode === "math_whole_number", "TIMES block is not a math_whole_number block");
+                    const timesValue = Number.parseInt(timesBlock.fields.NUM.value);
+                    assert(timesValue, "Repeater has invalid TIMES value");
+                    assert(timesValue === stackRefs.length, "Repeater has invalid TIMES value");
+
+                    const deleterId = blockToRemove.inputs.SUBSTACK?.block;
+                    assert(deleterId, "Repeater missing SUBSTACK");
+                    deleter = blocks.getBlock(deleterId);
+                    assert(deleter, "missing SUBSTACK block");
+                    assert(!deleter.next, "SUBSTACK block has next block");
+                }
+                assert(deleter.opcode === "data_deleteoflist", "Stack deleter block is not a data_deleteoflist block");
+                assert(deleter.fields.LIST.id === Signature.STACK, "Stack deleter block has incorrect LIST field");
+                // TODO: Verify INDEX input is 2 for calls or stack pushes, 1 otherwise
+
+                operations.push({ type: "deleteDeleter", deleter: blockToRemove });
+            }
+
+            if (curr.opcode === "procedures_call" && curr.mutation?.proccode.startsWith(Signature.FUNCTION)) {
+                callStack.push(/** @type {ScratchVM.Block & { mutation: ScratchVM.ProcedureCallMutation }} */(curr));
+            }
+            curr = curr.next ? blocks.getBlock(curr.next) : undefined;
+        } while (callStack.length);
+
+        assert(foldedStatement, "Fold produced no folded statement");
+        return { foldedStatement, operations };
+    }
+
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {FoldCallOperation[]} operations
+     */
+    applyFoldCall(blocks, operations) {
+        for (const op of operations) {
+            if (op.type === "fold") {
+                const { stackRef, correspondingCall } = op;
+                // stack reference is item of list block
+                for (const input of Object.values(stackRef.inputs || {})) {
                     if (input?.block) blocks.deleteBlock(input.block);
                     if (input?.shadow) blocks.deleteBlock(input.shadow);
                 }
@@ -162,28 +243,29 @@ export class Decoder {
                 this.detachBlock(blocks, correspondingCall);
                 blocks._deleteScript(correspondingCall.id);
                 delete blocks._blocks[correspondingCall.id];
-            }
-            if (stackRefs.length) {
-                foldedStatement = curr;
-                if (!curr.next) {
-                    console.warn("Folded statement missing next block", curr);
-                    return null;
-                }
-                const deleter = blocks.getBlock(curr.next);
-                if (!deleter) {
-                    console.warn("stack deleter block not found", curr);
-                    return null;
-                }
+            } else if (op.type === "deleteDeleter") {
+                const { deleter } = op;
                 this.detachBlock(blocks, deleter);
                 blocks.deleteBlock(deleter.id);
             }
-            if (curr.opcode === "procedures_call" && curr.mutation?.proccode.startsWith(Signature.FUNCTION)) {
-                callStack.push(curr);
-            }
-            curr = curr.next ? blocks.getBlock(curr.next) : null;
-        } while (callStack.length);
+        }
+    }
 
-        return foldedStatement;
+    /**
+     * @private
+     * @param {ScratchVM.Blocks} blocks
+     * @param {string} blockId
+     * @returns {ScratchVM.Block | null}
+     */
+    foldCall(blocks, blockId) {
+        try {
+            const { foldedStatement, operations } = this.verifyFoldCall(blocks, blockId);
+            this.applyFoldCall(blocks, operations);
+            return foldedStatement;
+        } catch (error) {
+            console.warn("Error folding call: ", error);
+            return null;
+        }
     }
 
     /**

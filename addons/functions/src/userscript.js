@@ -1,12 +1,12 @@
 /// <reference path="./types/scratch/sb3.d.ts" />
 /// <reference path="./types/userscript.d.ts" />
 
-import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks/index.js";
+import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks.js";
 import { patchCategory } from "./editor/patches.js";
 import { patchMenuBar } from "./editor/ui.js";
 import { patchDeserialization } from "./transform/decode/decoder.js";
 import { patchSerialization } from "./transform/encode/encoder.js";
-import { patchVM } from "./vm/index.js";
+import { patchVM } from "./vm.js";
 
 /**
  * @typedef {Object} FunctionContext

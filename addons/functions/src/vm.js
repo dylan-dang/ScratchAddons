@@ -1,7 +1,7 @@
-import { FunctionBlockType } from "../shared.js";
-import { assert, rebindOnce } from "../utils.js";
+import { FunctionBlockType } from "./shared.js";
+import { assert, rebindOnce } from "./utils.js";
 
-/** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
+/** @typedef {import("./userscript.js").FunctionContext} FunctionContext */
 
 /** Symbol to mark blocks we've already patched (avoid double-wrapping) */
 const PATCHED = Symbol("scratch-functions-patch");

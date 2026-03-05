@@ -1,7 +1,7 @@
-import { FunctionBlockType } from "../shared.js";
+import { FunctionBlockType } from "./shared.js";
 
 /**
- * @typedef {import("../userscript.js").FunctionContext} FunctionContext
+ * @typedef {import("./userscript.js").FunctionContext} FunctionContext
  */
 
 /**
