@@ -110,8 +110,11 @@ declare namespace ScratchBlocks {
   }
 
   export interface WorkspaceSvg extends WorkspaceSvg_ {
+    toolboxRefreshEnabled_: boolean;
     getToolbox(): Toolbox.Toolbox;
     newBlock(prototypeName: string, opt_id?: string): BlockSvg;
+    setToolboxRefreshEnabled(enabled: boolean): void;
+    refreshToolboxSelection_(): void;
   }
 
   const enum VariableType {
@@ -905,6 +908,9 @@ declare namespace ScratchBlocks {
     inject(container: Element | string, options: BlocklyOptions): WorkspaceSvg;
     FieldTextInputRemovable: new (...args: any[]) => Field;
     Block: new (workspace: Workspace, prototypeName?: string, opt_id?: string) => Block;
+    Options: {
+      parseToolboxTree(toolboxXML: Parameters<WorkspaceSvg["updateToolbox"]>[0]): Element;
+    };
     [key: string]: any;
   }
 

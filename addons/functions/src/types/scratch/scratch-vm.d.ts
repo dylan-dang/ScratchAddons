@@ -561,6 +561,8 @@ declare namespace ScratchVM {
      */
     deleteSound(soundIndex: number): Sound | null;
 
+    deleteVariable(variableId: string): void;
+
     /**
      * @see {reorderCostume}
      */
@@ -661,11 +663,6 @@ declare namespace ScratchVM {
   type Target = RenderedTarget;
 
   interface StackFrame {
-    /**
-     * we set these ourselves
-     */
-
-    // ORIGINAL
     isLoop: boolean;
     warpMode: boolean;
     justReported: unknown;

@@ -39,11 +39,30 @@ export class Decoder {
 
     this.transpileDefinitions(blocks);
     this.transpileReturns(blocks);
+    assert(!this.hasStackReferences(blocks), "Stack references found in blocks after transpile");
+    target.deleteVariable(Signature.STACK);
+
     for (const error of validate(blocks._blocks)) {
       console.warn("Decoding graph validation error: ", error);
     }
 
     blocks.forceNoGlow = oldForceNoGlow;
+  }
+
+  /**
+   * Checks if there are any other references to __stack__ list in the blocks.
+   * This utility method scans all blocks for usage of the "__stack__" variable,
+   * @param {ScratchVM.Blocks} blocks
+   * @returns {boolean}
+   */
+  hasStackReferences(blocks) {
+    for (const block of Object.values(blocks._blocks)) {
+      if (!block.fields) continue;
+      for (const field of Object.values(block.fields)) {
+        if (field.id === Signature.STACK) return true;
+      }
+    }
+    return false;
   }
 
   transpileTargets() {

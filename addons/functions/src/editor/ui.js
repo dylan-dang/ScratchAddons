@@ -6,6 +6,9 @@ import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_O
 /** @typedef {import("../transform/decode/decoder.js").Decoder} Decoder */
 
 const CATEGORY_KEY = "FUNCTION";
+const BACKDOOR_REFRESH = "refresh";
+/** @type {"raw" | "cooked"} */
+let state = "cooked";
 
 /** @param {ScratchBlocks.Blockly} Blockly */
 function createXmlParser(Blockly) {
@@ -32,29 +35,33 @@ function createXmlParser(Blockly) {
 }
 
 /** @param {FunctionContext} context */
-export function patchCategory({ addon, Blockly, vm }) {
+export function patchCategory({ addon, Blockly }) {
+  const workspace = addon.tab.traps.getWorkspace();
   // add category
   const { xml } = createXmlParser(Blockly);
-  const originalGetBlocksXML = vm.runtime.getBlocksXML;
 
-  /** @param {ScratchVM.Target} target */
-  vm.runtime.getBlocksXML = function (target) {
-    const result = originalGetBlocksXML.call(this, target);
+  const functionCategory = xml`
+    <category
+    id="sa-functions"
+    name="Functions"
+    colour="#cc5166"
+    secondaryColour="#cc5166"
+    custom="${CATEGORY_KEY}"
+    iconURI="${FUNCTION_ICON}"
+    />`;
 
-    result.unshift({
-      id: "sa-functions",
-      xml: /* xml */ `
-            <category
-              id="sa-functions"
-              name="Functions"
-              colour="#cc5166"
-              secondaryColour="#cc5166"
-              custom="${CATEGORY_KEY}"
-              iconURI="${FUNCTION_ICON}"
-            />`,
-    });
-
-    return result;
+  const oldUpdateToolbox = workspace.updateToolbox;
+  /** @type {Parameters<typeof workspace.updateToolbox>[0] | null} */
+  let savedToolboxXML = null;
+  workspace.updateToolbox = function (toolboxXML) {
+    const xml = Blockly.Options.parseToolboxTree(toolboxXML === BACKDOOR_REFRESH ? savedToolboxXML : toolboxXML);
+    if (toolboxXML !== BACKDOOR_REFRESH) {
+      savedToolboxXML = toolboxXML;
+    }
+    if (state === "cooked") {
+      xml?.querySelector(`category[id="myBlocks"]`)?.after(functionCategory);
+    }
+    return oldUpdateToolbox.call(this, xml);
   };
 
   const modal = addon.tab.createModal("Make a Function", { useEditorClasses: true });
@@ -99,7 +106,6 @@ export function patchCategory({ addon, Blockly, vm }) {
           </div>
         </div>`;
   // populate category
-  const workspace = addon.tab.traps.getWorkspace();
   workspace.registerToolboxCategoryCallback(
     CATEGORY_KEY,
     /** @param {any} workspace */ (workspace) => {
@@ -260,8 +266,11 @@ export function patchCategory({ addon, Blockly, vm }) {
  * @param {FunctionContext} context
  * @param {Decoder} transformer
  */
-export async function patchMenuBar({ addon, vm }, transformer) {
-  const fileGroup = await addon.tab.waitForElement(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
+export function patchMenuBar({ addon, vm }, transformer) {
+  const workspace = addon.tab.traps.getWorkspace();
+
+  const fileGroup = document.querySelector(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
+  assert(fileGroup, "File group not found");
   const buildButton = document.createElement("div");
   buildButton.classList.add(
     addon.tab.scratchClass("menu-bar_menu-bar-item"),
@@ -275,13 +284,17 @@ export async function patchMenuBar({ addon, vm }, transformer) {
   buildButton.addEventListener("click", async () => {
     const doBuild = buildButton.ariaPressed === "false";
     if (doBuild) {
+      state = "raw";
       const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
       await vm.loadProject(vm.toJSON());
       vm.setEditingTarget(vm.runtime.targets[targetIdx].id);
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
     } else {
+      state = "cooked";
       transformer.transpileTargets();
+      workspace.updateToolbox(BACKDOOR_REFRESH);
+      workspace.toolboxRefreshEnabled_ = true;
       image.src = BUILD_ICON;
       buildButton.ariaPressed = "false";
     }
