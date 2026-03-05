@@ -1,4 +1,5 @@
 import { FunctionBlockType } from "../shared.js";
+import { rebuild } from "../transform/encode/encoder.js";
 import { assert } from "../utils.js";
 import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
 
@@ -108,7 +109,7 @@ export function patchCategory({ addon, Blockly }) {
   // populate category
   workspace.registerToolboxCategoryCallback(
     CATEGORY_KEY,
-    /** @param {any} workspace */ (workspace) => {
+    /** @param {any} workspace */(workspace) => {
       const CALLBACK_KEY = "CREATE_FUNCTION";
       workspace.registerButtonCallback(CALLBACK_KEY, () => {
         modal.open();
@@ -225,15 +226,15 @@ export function patchCategory({ addon, Blockly }) {
 
       const calls = workspace
         .getAllBlocks()
-        .filter(/** @param {any} block */ (block) => block.type === FunctionBlockType.PROTOTYPE)
-        .map(/** @param {any} block */ (block) => block.mutationToDom(/* opt_generateShadows */ true))
+        .filter(/** @param {any} block */(block) => block.type === FunctionBlockType.PROTOTYPE)
+        .map(/** @param {any} block */(block) => block.mutationToDom(/* opt_generateShadows */ true))
         .filter(Boolean)
         .sort(
-          /** @param {any} a @param {any} b */ (a, b) =>
+          /** @param {any} a @param {any} b */(a, b) =>
             Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
         )
         .map(
-          /** @param {any} mutation */ (mutation) => {
+          /** @param {any} mutation */(mutation) => {
             const block = document.createElementNS(null, "block");
             block.setAttribute("type", FunctionBlockType.CALL);
             block.setAttribute("gap", "16");
@@ -247,15 +248,15 @@ export function patchCategory({ addon, Blockly }) {
         calls,
         calls.length > 0
           ? [
-              xml`<sep gap="36" />`,
-              xml`<block type="${FunctionBlockType.RETURN}">
+            xml`<sep gap="36" />`,
+            xml`<block type="${FunctionBlockType.RETURN}">
                     <value name="ITEM">
                       <shadow type="text">
                         <field name="TEXT" />
                       </shadow>
                     </value>
                   </block>`,
-            ]
+          ]
           : [],
       ].flat();
     }
@@ -282,12 +283,11 @@ export function patchMenuBar({ addon, vm }, transformer) {
   buildButton.appendChild(image);
   image.src = BUILD_ICON;
   buildButton.addEventListener("click", async () => {
+    if (addon.self.disabled) return;
     const doBuild = buildButton.ariaPressed === "false";
     if (doBuild) {
       state = "raw";
-      const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
-      await vm.loadProject(vm.toJSON());
-      vm.setEditingTarget(vm.runtime.targets[targetIdx].id);
+      await rebuild(vm);
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
     } else {
@@ -299,5 +299,6 @@ export function patchMenuBar({ addon, vm }, transformer) {
       buildButton.ariaPressed = "false";
     }
   });
+  addon.tab.displayNoneWhileDisabled(buildButton);
   fileGroup.after(buildButton);
 }

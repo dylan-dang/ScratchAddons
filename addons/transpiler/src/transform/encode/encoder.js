@@ -209,12 +209,12 @@ class Encoder {
     /** @type {RegisteredBlock[]} */
     const inputBlocks = argumentIds
       .map((argId) => block.ref.inputs[argId])
-      .filter(/** @returns {primitive is Serialized.Primitive} */ (primitive) => !!primitive)
+      .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
       .map(([, input]) => {
         if (typeof input !== "string") return;
         return graph.getBlock(input);
       })
-      .filter(/** @returns {block is NonNullable<typeof block>} */ (block) => !!block);
+      .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
 
     return inputBlocks.flatMap((block) => this.getAndReplaceCalls(block, graph, ctx));
   }
@@ -372,4 +372,14 @@ export function patchSerialization({ Blockly, vm }) {
     }
     return JSON.stringify(parsed);
   };
+}
+
+/**
+ * rebuild the project and set the editing target to the selected target
+ * @param {ScratchVM.VM} vm
+ */
+export async function rebuild(vm) {
+  const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
+  await vm.loadProject(vm.toJSON());
+  vm.setEditingTarget(vm.runtime.targets[targetIdx].id);
 }

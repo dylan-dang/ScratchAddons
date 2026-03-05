@@ -1,0 +1,21 @@
+{
+  "name": "Transpiler",
+  "description": "Adds new functionality for higher level language features, such as custom functions, that can be transpiled to and from regular Scratch with runtime support.",
+  "credits": [
+    {
+      "name": "Dylan Dang"
+    }
+  ],
+  "userscripts": [
+    {
+      "url": "src/userscript.js",
+      "matches": ["projects"]
+    }
+  ],
+  "versionAdded": "1.44.5",
+  "tags": ["editor", "codeEditor"],
+  "enabledByDefault": false,
+  "dynamicEnable": true,
+  "dynamicDisable": true,
+  "libraries": ["scratch-gui"]
+}

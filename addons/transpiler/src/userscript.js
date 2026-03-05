@@ -32,5 +32,13 @@ export default async function ({ addon }) {
   patchMenuBar(context, transformer);
   patchVM(context);
 
+  addon.self.addEventListener("disabled", () => {
+    vm.refreshWorkspace();
+  });
+
+  addon.self.addEventListener("disabled", () => {
+    vm.refreshWorkspace();
+  });
+
   vm.refreshWorkspace();
 }
