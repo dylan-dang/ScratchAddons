@@ -1,5 +1,5 @@
 import { FunctionBlockType } from "../shared.js";
-import { assert } from "../utils.js";
+import { assert, rebindOnce } from "../utils.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
@@ -67,13 +67,13 @@ function patchThread(thread) {
 
 
 /**
- * this patches Block.getProcedureDefinition so the sequencer can find our function defintion
+ * this patches Block.getProcedureDefinition so the sequencer can find our function definition
  * in Sequencer.stepToProcedure
  * @this {ScratchVM.Blocks}
  * @param {string} name
  * @returns {string | null}
  */
-function getProcedureDefinition(name) {
+function getFunctionDefinition(name) {
     const blockID = this._cache.procedureDefinitions[name];
     if (typeof blockID !== 'undefined') {
         return blockID;
@@ -82,7 +82,7 @@ function getProcedureDefinition(name) {
     for (const id in this._blocks) {
         if (!Object.prototype.hasOwnProperty.call(this._blocks, id)) continue;
         const block = this._blocks[id];
-        if (block.opcode === 'procedures_definition' || block.opcode === FunctionBlockType.DEFINITION) {
+        if (block.opcode === FunctionBlockType.DEFINITION) {
             const internal = this._getCustomBlockInternal(block);
             if (internal && internal.mutation.proccode === name) {
                 return id;
@@ -132,21 +132,17 @@ function getFunctionParamNamesIdsAndDefaults(blocks, proccode) {
  * @param {ScratchVM.Blocks} blocks
  */
 function patchBlockExecuteCache(blocks) {
-    const cache = blocks._cache._executeCached;
-    assert(cache, "execute cache is not set");
     // Wrap block functions as they're first read from the execute cache.
-    blocks._cache._executeCached = new Proxy(cache, {
-        set(target, prop, value) {
-            if (typeof prop === "symbol" || !value || value[PATCHED] || typeof value._blockFunction !== "function") {
-                target[prop] = value;
-                return true;
+    blocks._cache._executeCached = new Proxy(/** @type {Record<string | symbol, BlockExecuteCache>} */({}), {
+        set(target, prop, value, receiver) {
+            if (!value || value[PATCHED] || typeof value._blockFunction !== "function") {
+                return Reflect.set(target, prop, value, receiver);
             }
             const originalFn = value._blockFunction;
             /** @param {Record<string, unknown>} args @param {ScratchVM.BlockUtility} util */
             value._blockFunction = function (args, util) {
                 const currentStackFrame = util.thread.peekStackFrame();
                 const primitiveReportedValue = originalFn(args, util);
-                console.log("execute", value['opcode'], 'returned', primitiveReportedValue, value);
                 if (!currentStackFrame?.waitingReporter) return primitiveReportedValue;
                 // we want to trick the engine into thinking that the primitive returned a promise
                 // https://github.com/scratchfoundation/scratch-vm/blob/bb352913b57991713a5ccf0b611fda91056e14ec/src/engine/execute.js#L516
@@ -161,11 +157,10 @@ function patchBlockExecuteCache(blocks) {
                 }
             };
             value[PATCHED] = true;
-            target[prop] = value;
-            return true;
+            return Reflect.set(target, prop, value, receiver);
         },
-        get(target, prop) {
-            return target[prop];
+        get(target, prop, receiver) {
+            return Reflect.get(target, prop, receiver);
         }
     });
 }
@@ -228,7 +223,7 @@ export function patchVM({ vm }) {
         threadStackFrame.waitingReporter = true;
         stackFrame.returnValue = ''; // default return value
 
-        util.thread.target.blocks.getProcedureDefinition = getProcedureDefinition.bind(util.thread.target.blocks);
+        rebindOnce(util.thread.target.blocks, 'getProcedureDefinition', getFunctionDefinition);
         util.sequencer.stepToProcedure(util.thread, procedureCode);
     };
 
