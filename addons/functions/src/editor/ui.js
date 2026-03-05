@@ -4,21 +4,6 @@ import { BUILD_ICON, DEV_ICON } from "./icons.js";
 /** @typedef {import("../transform/decode/decoder.js").Decoder} Decoder */
 
 /**
- * @param {import("blockly").WorkspaceSvg} workspace
- * @returns {{ x: number, y: number } | undefined}
- */
-function saveScrollPosition(workspace) {
-    if (!workspace.scrollbar) return;
-    const hScroll = workspace.scrollbar.hScroll;
-    const vScroll = workspace.scrollbar.vScroll;
-    if (!hScroll || !vScroll) return;
-    return {
-        x: hScroll.handlePosition_ / hScroll.ratio_,
-        y: vScroll.handlePosition_ / vScroll.ratio_,
-    };
-}
-
-/**
  * @param {FunctionContext} context
  * @param {Decoder} transformer
  */
@@ -33,8 +18,6 @@ export async function patchMenuBar({ addon, vm }, transformer) {
     image.src = BUILD_ICON;
     buildButton.addEventListener("click", async () => {
         const doBuild = buildButton.ariaPressed === "false";
-        const workspace = addon.tab.traps.getWorkspace();
-        const scroll = saveScrollPosition(workspace);
         if (doBuild) {
             const targetIdx = vm.editingTarget ? vm.runtime.targets.indexOf(vm.editingTarget) : 1;
             await vm.loadProject(vm.toJSON());
@@ -46,7 +29,6 @@ export async function patchMenuBar({ addon, vm }, transformer) {
             image.src = BUILD_ICON;
             buildButton.ariaPressed = "false";
         }
-        if (scroll) workspace.scrollbar?.set(scroll.x, scroll.y);
     });
     fileGroup.after(buildButton);
 }
