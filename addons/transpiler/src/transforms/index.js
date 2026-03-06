@@ -17,12 +17,18 @@
 
 import { functionsTransform } from "./functions/index.js";
 
-/** @type {Array<{
- *   id: string,
- *   category?: import("../editor/categories.js").CategoryDefinition,
- *   blocks?: { defineBlocks: Function, patchConnection?: Function, patchBlockSvg?: Function, patchBlockDragger?: Function },
- *   vm?: { patch: (context: import("../userscript.js").FunctionContext) => void },
- *   encode: (graph: import("../transform/encode/graph.js").SerializedBlockGraph) => void,
- *   decode: (graph: import("../transform/decode/graph.js").RuntimeBlockGraph) => void
- * }>} */
+
+/**
+ * @typedef {Object} Transform
+ * @property {string} id
+ * @property {import("../editor/categories.js").CategoryDefinition} [category]
+ * @property {{ defineBlocks: Function, patchConnection?: Function, patchBlockSvg?: Function, patchBlockDragger?: Function }} [blocks]
+ * @property {{ patch: (context: import("../userscript.js").FunctionContext) => void }} [vm]
+ * @property {(graph: import("../transform/encode/graph.js").SerializedBlockGraph) => void} encode
+ * @property {(graph: import("../transform/decode/graph.js").RuntimeBlockGraph) => void} decode
+ */
+
+/**
+ * @type {Array<Transform>}
+ */
 export const TRANSFORMS = [functionsTransform];
