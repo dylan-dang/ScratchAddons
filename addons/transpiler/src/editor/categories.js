@@ -1,4 +1,4 @@
-import state from "../state.js";
+import { buildState } from "../state.js";
 import { createXmlParser } from "./xml.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
@@ -29,14 +29,14 @@ export function patchCategories(context, transforms) {
 
   const categoryDefs = transforms
     .map((t) => t.category)
-    .filter(/** @param {CategoryDefinition | undefined} def @returns {def is CategoryDefinition} */ (def) => !!def);
+    .filter(/** @param {CategoryDefinition | undefined} def @returns {def is CategoryDefinition} */(def) => !!def);
 
   const categoryElements = categoryDefs
     .map(
       (def) =>
-        /** @type {[CategoryDefinition, Node]} */ ([
-          def,
-          xml`
+        /** @type {[CategoryDefinition, Node]} */([
+        def,
+        xml`
             <category
               id="${def.id}"
               name="${def.name}"
@@ -46,14 +46,14 @@ export function patchCategories(context, transforms) {
               iconURI="${def.iconURI}"
             />
           `,
-        ])
+      ])
     )
     .reverse();
 
   const oldUpdateToolbox = workspace.updateToolbox;
   workspace.updateToolbox = function (toolboxXML) {
     const parsedXml = Blockly.Options.parseToolboxTree(toolboxXML ?? this.options.languageTree);
-    if (!state.build) {
+    if (!buildState.get()) {
       // Insert in reverse order so final order matches TRANSFORMS array
       for (const [def, element] of categoryElements) {
         parsedXml?.querySelector(`category[id="${def.insertAfter}"]`)?.after(element);

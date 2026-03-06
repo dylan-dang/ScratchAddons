@@ -1,4 +1,4 @@
-import state from "../state.js";
+import { buildState } from "../state.js";
 import { assert } from "../utils.js";
 import { BUILD_ICON, DEV_ICON } from "./icons.js";
 
@@ -24,16 +24,16 @@ export function patchMenuBar({ addon }) {
     addon.tab.scratchClass("menu-bar_hoverable")
   );
   buildButton.role = "button";
-  buildButton.ariaPressed = state.build ? "true" : "false";
+  buildButton.ariaPressed = buildState.get() ? "true" : "false";
   const image = document.createElement("img");
   buildButton.appendChild(image);
   image.src = BUILD_ICON;
-  buildButton.addEventListener("click", async () => {
-    state.build = !state.build;
+  buildButton.addEventListener("click", () => {
+    buildState.set(!buildState.get());
   });
 
-  state.listen((transpiled) => {
-    if (transpiled) {
+  buildState.subscribe((build) => {
+    if (build) {
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
       return;

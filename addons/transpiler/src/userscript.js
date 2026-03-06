@@ -3,7 +3,7 @@
 
 import { patchCategories } from "./editor/categories.js";
 import { patchMenuBar, refreshToolbox } from "./editor/ui.js";
-import state from "./state.js";
+import { buildState } from "./state.js";
 import { transpileTargets } from "./transform/decode/decoder.js";
 import { patchSerialization, rebuild } from "./transform/encode/encoder.js";
 import { TRANSFORMS } from "./transforms/index.js";
@@ -43,7 +43,7 @@ export default async function ({ addon }) {
     refreshToolbox(workspace);
   });
 
-  state.listen(async (build) => {
+  buildState.subscribe(async (build) => {
     if (build) {
       await rebuild(vm);
       return;
@@ -53,10 +53,10 @@ export default async function ({ addon }) {
   });
 
   addon.self.addEventListener("disabled", () => {
-    state.build = true;
+    buildState.set(true);
   });
   addon.self.addEventListener("reenabled", () => {
-    state.build = false;
+    buildState.set(false);
   });
 
   vm.refreshWorkspace();
