@@ -1,5 +1,5 @@
 import { FunctionBlockType } from "../shared.js";
-import { rebuild } from "../transform/encode/encoder.js";
+import state from "../state.js";
 import { assert } from "../utils.js";
 import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_OR_TEXT_ICON } from "./icons.js";
 
@@ -8,8 +8,6 @@ import { BOOLEAN_ICON, BUILD_ICON, DEV_ICON, FUNCTION_ICON, LABEL_ICON, NUMBER_O
 
 const CATEGORY_KEY = "FUNCTION";
 const BACKDOOR_REFRESH = "refresh";
-/** @type {"raw" | "cooked"} */
-let state = "cooked";
 
 /** @param {ScratchBlocks.Blockly} Blockly */
 function createXmlParser(Blockly) {
@@ -59,7 +57,7 @@ export function patchCategory({ addon, Blockly }) {
     if (toolboxXML !== BACKDOOR_REFRESH) {
       savedToolboxXML = toolboxXML;
     }
-    if (state === "cooked") {
+    if (!state.transpiled) {
       xml?.querySelector(`category[id="myBlocks"]`)?.after(functionCategory);
     }
     return oldUpdateToolbox.call(this, xml);
@@ -264,6 +262,14 @@ export function patchCategory({ addon, Blockly }) {
 }
 
 /**
+ * @param {ScratchBlocks.WorkspaceSvg} workspace
+ */
+export function refreshToolbox(workspace) {
+  workspace.updateToolbox(BACKDOOR_REFRESH);
+  workspace.toolboxRefreshEnabled_ = true;
+}
+
+/**
  * @param {FunctionContext} context
  * @param {Decoder} transformer
  */
@@ -278,27 +284,24 @@ export function patchMenuBar({ addon, vm }, transformer) {
     addon.tab.scratchClass("menu-bar_hoverable")
   );
   buildButton.role = "button";
-  buildButton.ariaPressed = "false";
+  buildButton.ariaPressed = state.transpiled ? "true" : "false";
   const image = document.createElement("img");
   buildButton.appendChild(image);
   image.src = BUILD_ICON;
   buildButton.addEventListener("click", async () => {
-    if (addon.self.disabled) return;
-    const doBuild = buildButton.ariaPressed === "false";
-    if (doBuild) {
-      state = "raw";
-      await rebuild(vm);
+    state.transpiled = !state.transpiled;
+  });
+
+  state.listen(async (transpiled) => {
+    if (transpiled) {
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
-    } else {
-      state = "cooked";
-      transformer.transpileTargets();
-      workspace.updateToolbox(BACKDOOR_REFRESH);
-      workspace.toolboxRefreshEnabled_ = true;
-      image.src = BUILD_ICON;
-      buildButton.ariaPressed = "false";
+      return;
     }
-  });
+    image.src = BUILD_ICON;
+    buildButton.ariaPressed = "false";
+  })
+
   addon.tab.displayNoneWhileDisabled(buildButton);
   fileGroup.after(buildButton);
 }

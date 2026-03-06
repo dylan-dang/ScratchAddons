@@ -2,9 +2,10 @@
 /// <reference path="./types/userscript.d.ts" />
 
 import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks.js";
-import { patchCategory, patchMenuBar } from "./editor/ui.js";
+import { patchCategory, patchMenuBar, refreshToolbox } from "./editor/ui.js";
+import state from "./state.js";
 import { patchDeserialization } from "./transform/decode/decoder.js";
-import { patchSerialization } from "./transform/encode/encoder.js";
+import { patchSerialization, rebuild } from "./transform/encode/encoder.js";
 import { patchVM } from "./vm.js";
 
 /**
@@ -32,12 +33,21 @@ export default async function ({ addon }) {
   patchMenuBar(context, transformer);
   patchVM(context);
 
-  addon.self.addEventListener("disabled", () => {
-    vm.refreshWorkspace();
-  });
+  const workspace = addon.tab.traps.getWorkspace();
+  state.listen(async (transpiled) => {
+    if (transpiled) {
+      await rebuild(vm);
+      return;
+    }
+    transformer.transpileTargets();
+    refreshToolbox(workspace);
+  })
 
   addon.self.addEventListener("disabled", () => {
-    vm.refreshWorkspace();
+    state.transpiled = false;
+  });
+  addon.self.addEventListener("reenabled", () => {
+    state.transpiled = true;
   });
 
   vm.refreshWorkspace();

@@ -366,9 +366,14 @@ export function patchSerialization({ Blockly, vm }) {
     const json = originalToJSON.call(this, optTargetId);
     /** @type {Serialized.Project | Serialized.Sprite} */
     const parsed = JSON.parse(json);
-    const targets = "blocks" in parsed ? [parsed] : parsed.targets;
-    for (const target of targets) {
-      transpiler.transpileTarget(target);
+    try {
+      const targets = "blocks" in parsed ? [parsed] : parsed.targets;
+      for (const target of targets) {
+        transpiler.transpileTarget(target);
+      }
+    } catch (error) {
+      console.error("Error serializing project with transpiler: ", error);
+      return json;
     }
     return JSON.stringify(parsed);
   };
