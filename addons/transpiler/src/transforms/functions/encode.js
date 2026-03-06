@@ -1,6 +1,6 @@
-import { FunctionBlockType, Signature } from "./shared.js";
-import { assert } from "../../utils.js";
 import { InputType, RegisteredBlock } from "../../transform/encode/block.js";
+import { assert } from "../../utils.js";
+import { FunctionBlockType, Signature } from "./shared.js";
 
 /** @typedef {import("../../transform/encode/graph.js").SerializedBlockGraph} SerializedBlockGraph */
 
@@ -20,12 +20,12 @@ export function encode(graph) {
  */
 function transpilePrototypes(graph) {
   for (const prototype of graph.getBlocks([FunctionBlockType.PROTOTYPE])) {
-    assert(prototype.ref.mutation, "Prototype mutation is required");
+    assert(prototype.mutation, "Prototype mutation is required");
     prototype.assign({
       opcode: "procedures_prototype",
       mutation: {
-        ...prototype.ref.mutation,
-        proccode: Signature.FUNCTION + prototype.ref.mutation.proccode,
+        ...prototype.mutation,
+        proccode: Signature.FUNCTION + prototype.mutation.proccode,
       },
     });
   }
@@ -38,7 +38,7 @@ function transpilePrototypes(graph) {
 function replaceStopScripts(block) {
   if (!block) return;
 
-  if (block.ref.opcode === "control_stop" && block.ref.fields?.STOP_OPTION?.[0] === "this script") {
+  if (block.opcode === "control_stop" && block.fields.STOP_OPTION?.[0] === "this script") {
     block.assign({
       opcode: FunctionBlockType.RETURN,
       mutation: undefined,
@@ -50,7 +50,7 @@ function replaceStopScripts(block) {
 
   replaceStopScripts(block.getNext());
   // handle branching blocks
-  for (const [name, input] of Object.entries(block.ref.inputs)) {
+  for (const [name, input] of Object.entries(block.inputs)) {
     if (!input) continue;
     const [type, refId] = input;
     if (!name.startsWith("SUBSTACK")) continue; // not a substack input
@@ -75,11 +75,11 @@ function transpileDefinitions(graph) {
 
     if (
       ["control_delete_this_clone", "control_forever", FunctionBlockType.RETURN, "control_stop"].includes(
-        lastBlock.ref.opcode
+        lastBlock.opcode
       )
     )
       continue;
-    if (lastBlock.ref.mutation?.hasnext === "false") continue;
+    if (lastBlock.mutation?.hasnext === "false") continue;
 
     lastBlock.insertAfter(
       graph.register({
@@ -104,7 +104,7 @@ function transpileReturns(graph) {
     returnBlock.assign({
       opcode: "data_insertatlist",
       inputs: {
-        ...returnBlock.ref.inputs,
+        ...returnBlock.inputs,
         INDEX: [InputType.SameShadow, [InputType.IntegerNumber, "1"]],
       },
       fields: { LIST: [Signature.STACK, Signature.STACK] },
@@ -140,7 +140,7 @@ function transpileCalls(graph) {
     }
 
     const scope = anchor.getScope();
-    if (scope?.ref.mutation?.warp === "true") {
+    if (scope?.mutation?.warp === "true") {
       transpileStatement(anchor, graph);
     } else {
       atomicizeStatement(anchor, graph, scope);
@@ -156,7 +156,7 @@ function transpileCalls(graph) {
  * @returns {RegisteredBlock[]}
  */
 function getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
-  if (block.ref.opcode === FunctionBlockType.CALL) {
+  if (block.opcode === FunctionBlockType.CALL) {
     block.swap(
       graph.register({
         opcode: "data_itemoflist",
@@ -178,18 +178,18 @@ function getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
       .getBlockDefinition()
       .args0?.filter(({ type }) => type === "input_value")
       .map(({ name }) => name) ?? []),
-    ...JSON.parse(block.ref.mutation?.argumentids ?? "[]"),
+    ...JSON.parse(block.mutation?.argumentids ?? "[]"),
   ];
 
   /** @type {RegisteredBlock[]} */
   const inputBlocks = argumentIds
-    .map((argId) => block.ref.inputs[argId])
-    .filter(/** @returns {primitive is Serialized.Primitive} */ (primitive) => !!primitive)
+    .map((argId) => block.inputs[argId])
+    .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
     .map(([, input]) => {
       if (typeof input !== "string") return;
       return graph.getBlock(input);
     })
-    .filter(/** @returns {block is NonNullable<typeof block>} */ (block) => !!block);
+    .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
 
   return inputBlocks.flatMap((block) => getAndReplaceCalls(block, graph, ctx));
 }
@@ -206,27 +206,27 @@ function transpileStatement(stmt, graph) {
   if (stmt.isTopLevel()) {
     const [firstCall] = calls;
     firstCall.assign({
-      x: stmt.ref.x,
-      y: stmt.ref.y,
+      x: stmt.x,
+      y: stmt.y,
       topLevel: true,
     });
     stmt.assign({ topLevel: false, x: undefined, y: undefined });
   }
 
   for (const call of calls) {
-    assert(call.ref.mutation, "Call mutation is required");
+    assert(call.mutation, "Call mutation is required");
     call.assign({
       opcode: "procedures_call",
       mutation: {
-        ...call.ref.mutation,
-        proccode: Signature.FUNCTION + call.ref.mutation.proccode,
+        ...call.mutation,
+        proccode: Signature.FUNCTION + call.mutation.proccode,
       },
     });
     stmt.insertBefore(call);
   }
 
-  const isCall = stmt.ref.opcode === "procedures_call" && stmt.ref.mutation?.proccode?.startsWith(Signature.FUNCTION);
-  const isStackPush = stmt.ref.opcode === "data_insertatlist" && stmt.ref.fields?.LIST?.[0] === Signature.STACK;
+  const isCall = stmt.opcode === "procedures_call" && stmt.mutation?.proccode?.startsWith(Signature.FUNCTION);
+  const isStackPush = stmt.opcode === "data_insertatlist" && stmt.fields?.LIST?.[0] === Signature.STACK;
 
   const deleter = graph.register({
     opcode: "data_deleteoflist",
@@ -269,8 +269,8 @@ function transpileStatement(stmt, graph) {
  * @param {RegisteredBlock} [scope]
  */
 function atomicizeStatement(stmt, graph, scope) {
-  const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.ref.mutation?.proccode?.match(/(?<!\\)%[nbs]/g)?.join(" ") ?? ""}`;
-  const argumentids = scope?.ref.mutation?.argumentids ?? "[]";
+  const proccode = `${Signature.ATOMIC}${stmt.id.replaceAll("%", "\\%")} ${scope?.mutation?.proccode?.match(/(?<!\\)%[nbs]/g)?.join(" ") ?? ""}`;
+  const argumentids = scope?.mutation?.argumentids ?? "[]";
 
   const prototype = graph.register({
     opcode: "procedures_prototype",
@@ -283,8 +283,8 @@ function atomicizeStatement(stmt, graph, scope) {
       children: [],
       proccode,
       argumentids,
-      argumentnames: scope?.ref.mutation?.argumentnames ?? "[]",
-      argumentdefaults: scope?.ref.mutation?.argumentdefaults ?? "[]",
+      argumentnames: scope?.mutation?.argumentnames ?? "[]",
+      argumentdefaults: scope?.mutation?.argumentdefaults ?? "[]",
       warp: "true",
     },
   });

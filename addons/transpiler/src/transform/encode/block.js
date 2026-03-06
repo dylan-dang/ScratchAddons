@@ -64,6 +64,32 @@ export class RegisteredBlock {
     this.id = id;
   }
 
+  get opcode() {
+    return this.ref.opcode;
+  }
+
+  get fields() {
+    if (!this.ref.fields) this.ref.fields = {};
+    return this.ref.fields;
+  }
+
+  get mutation() {
+    return this.ref.mutation ?? null;
+  }
+
+  get inputs() {
+    if (!this.ref.inputs) this.ref.inputs = {};
+    return this.ref.inputs;
+  }
+
+  get x() {
+    return this.ref.x;
+  }
+
+  get y() {
+    return this.ref.y;
+  }
+
   /**
    * @private
    * @param {RegisteredBlock | null} parent
