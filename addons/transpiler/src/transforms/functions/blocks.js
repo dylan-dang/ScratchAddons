@@ -150,9 +150,12 @@ export function patchBlockSvg(Blockly) {
    * @private
    */
   Blockly.BlockSvg.prototype.renderDrawRight_ = function (steps, inputRows, iconWidth) {
-    if (this.type === FunctionBlockType.CALL) {
-      // remove 2 units from the padding end of the last input row
-      inputRows[inputRows.length - 1].paddingEnd -= 2 * Blockly.BlockSvg.GRID_UNIT;
+    if (this.type === FunctionBlockType.CALL || this.type === FunctionBlockType.PROTOTYPE) {
+      // remove units from the padding end of the last input row if it ends with an input
+      if (this.getProcCode().endsWith("%s")) {
+        const amount = this.type === FunctionBlockType.CALL ? 2 : 1;
+        inputRows[inputRows.length - 1].paddingEnd -= amount * Blockly.BlockSvg.GRID_UNIT;
+      }
     }
     const returnValue = originalRenderDrawRight_.call(this, steps, inputRows, iconWidth);
     if (this.type === FunctionBlockType.DEFINITION) {

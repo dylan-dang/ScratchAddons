@@ -128,6 +128,7 @@ export const functionsCategory = {
             Blockly.Events.fire(new Blockly.Events.BlockChange(caller, "mutation", null, oldMutation, newMutation));
           }
         }
+        workspace.refreshToolboxSelection_();
       });
     });
 
