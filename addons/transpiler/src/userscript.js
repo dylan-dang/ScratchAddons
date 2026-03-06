@@ -1,12 +1,12 @@
 /// <reference path="./types/scratch/sb3.d.ts" />
 /// <reference path="./types/userscript.d.ts" />
 
-import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks.js";
-import { patchCategory, patchMenuBar, refreshToolbox } from "./editor/ui.js";
+import { patchCategories } from "./editor/categories.js";
+import { patchMenuBar, refreshToolbox } from "./editor/ui.js";
 import state from "./state.js";
 import { patchDeserialization } from "./transform/decode/decoder.js";
 import { patchSerialization, rebuild } from "./transform/encode/encoder.js";
-import { patchVM } from "./vm.js";
+import { TRANSFORMS } from "./transforms/index.js";
 
 /**
  * @typedef {Object} FunctionContext
@@ -23,15 +23,24 @@ export default async function ({ addon }) {
   /** @type {FunctionContext} */
   const context = { addon, Blockly, vm };
 
-  patchCategory(context);
-  patchConnection(context);
-  defineBlocks(context);
-  patchBlockSvg(context);
-  patchBlockDragger(context);
+  patchCategories(context, TRANSFORMS);
+
+  for (const transform of TRANSFORMS) {
+    if (transform.blocks) {
+      transform.blocks.defineBlocks(context);
+      if (transform.blocks.patchConnection) transform.blocks.patchConnection(context);
+      if (transform.blocks.patchBlockSvg) transform.blocks.patchBlockSvg(context);
+      if (transform.blocks.patchBlockDragger) transform.blocks.patchBlockDragger(context);
+    }
+  }
+
   patchSerialization(context);
   const transformer = patchDeserialization(context);
   patchMenuBar(context);
-  patchVM(context);
+
+  for (const transform of TRANSFORMS) {
+    if (transform.vm) transform.vm.patch(context);
+  }
 
   const workspace = addon.tab.traps.getWorkspace();
   state.listen(async (transpiled) => {

@@ -3,12 +3,13 @@ import { InputType, RegisteredBlock } from "./block.js";
 export class SerializedBlockGraph {
   /**
    * @param {{
-   *   blocks: Serialized.Target["blocks"],
+   *   target: Serialized.Target,
    *   Blockly: ScratchBlocks.Blockly
    * }} dependencies
    */
   constructor(dependencies) {
-    this.blocks = dependencies.blocks;
+    this.target = dependencies.target;
+    this.blocks = this.target.blocks;
     this.Blockly = dependencies.Blockly;
   }
 
