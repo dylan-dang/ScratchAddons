@@ -36,7 +36,7 @@ export default async function ({ addon }) {
   // patch first deserialization
   vm.once("targetsUpdate", () => {
     transpileTargets(vm);
-    vm.refreshWorkspace();
+    refreshToolbox(workspace);
   });
 
   const workspace = addon.tab.traps.getWorkspace();
@@ -56,8 +56,5 @@ export default async function ({ addon }) {
     state.transpiled = false;
   });
 
-  setTimeout(() => {
-    vm.refreshWorkspace();
-    refreshToolbox(workspace);
-  });
+  vm.refreshWorkspace();
 }

@@ -1,6 +1,5 @@
 import state from "../state.js";
 import { assert } from "../utils.js";
-import { BACKDOOR_REFRESH } from "./categories.js";
 import { BUILD_ICON, DEV_ICON } from "./icons.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
@@ -9,7 +8,7 @@ import { BUILD_ICON, DEV_ICON } from "./icons.js";
  * @param {ScratchBlocks.WorkspaceSvg} workspace
  */
 export function refreshToolbox(workspace) {
-  workspace.updateToolbox(BACKDOOR_REFRESH);
+  workspace.updateToolbox(null);
   workspace.toolboxRefreshEnabled_ = true;
 }
 
