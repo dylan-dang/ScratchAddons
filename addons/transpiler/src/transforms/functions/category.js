@@ -21,15 +21,15 @@ const CALLBACK_KEY = "CREATE_FUNCTION";
 function buildFunctionCalls(workspace, Blockly) {
   return workspace
     .getAllBlocks()
-    .filter(/** @param {ScratchBlocks.BlockSvg} block */ (block) => block.type === FunctionBlockType.PROTOTYPE)
-    .map(/** @param {ScratchBlocks.BlockSvg} block */ (block) => block.mutationToDom?.(/* opt_generateShadows */ true))
+    .filter(/** @param {ScratchBlocks.BlockSvg} block */(block) => block.type === FunctionBlockType.PROTOTYPE)
+    .map(/** @param {ScratchBlocks.BlockSvg} block */(block) => block.mutationToDom?.(/* opt_generateShadows */ true))
     .filter(Boolean)
     .sort(
-      /** @param {Element} a @param {Element} b */ (a, b) =>
+      /** @param {Element} a @param {Element} b */(a, b) =>
         Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
     )
     .map(
-      /** @param {Element} mutation */ (mutation) => {
+      /** @param {Element} mutation */(mutation) => {
         const block = document.createElementNS(null, "block");
         block.setAttribute("type", FunctionBlockType.CALL);
         block.setAttribute("gap", "16");
@@ -46,15 +46,15 @@ function buildToolboxContent(xml, calls) {
     calls,
     calls.length > 0
       ? [
-          xml`<sep gap="36" />`,
-          xml`<block type="${FunctionBlockType.RETURN}">
+        xml`<sep gap="36" />`,
+        xml`<block type="${FunctionBlockType.RETURN}">
                 <value name="ITEM">
                   <shadow type="text">
                     <field name="TEXT" />
                   </shadow>
                 </value>
               </block>`,
-        ]
+      ]
       : [],
   ].flat();
 }
@@ -82,26 +82,34 @@ export const functionsCategory = {
                   warp="true">
         </mutation>`;
       assert(mutation, "Mutation not found");
-      modal.open(mutation, (newMutation) => {
-        if (!newMutation) return;
-        const mainWorkspace = addon.tab.traps.getWorkspace();
-        const blockDom = xml`<block type="${FunctionBlockType.DEFINITION}" gap="16">
-            <value name="custom_block">
-              <shadow type="${FunctionBlockType.PROTOTYPE}">
-                ${Blockly.Xml.domToText(mutation)}
-              </shadow>
-            </value>
-          </block>`;
+
+      modal.open(mutation, (mutation) => {
+        if (!mutation) return;
+        const blockDom = xml`
+        <block type="${FunctionBlockType.DEFINITION}">
+          <value name="custom_block">
+            <shadow type="${FunctionBlockType.PROTOTYPE}">
+               ${Blockly.Xml.domToText(mutation)}
+            </shadow>
+           </value>
+         </block>`;
         Blockly.Events.setGroup(true);
         /** @type {ScratchBlocks.Block} */
-        const block = Blockly.Xml.domToBlock(blockDom, mainWorkspace);
-        const scale = mainWorkspace.scale;
-        const posX = 30 - mainWorkspace.scrollX;
-        const posY = 30 - mainWorkspace.scrollY;
-        block.moveBy(posX / scale, posY / scale);
+        Blockly.Events.setGroup(true);
+        var block = Blockly.Xml.domToBlock(blockDom, workspace);
+        var scale = workspace.scale; // To convert from pixel units to workspace units
+        // Position the block so that it is at the top left of the visible workspace,
+        // padded from the edge by 30 units. Position in the top right if RTL.
+        var posX = -workspace.scrollX;
+        if (workspace.RTL) {
+          posX += workspace.getMetrics().contentWidth - 30;
+        } else {
+          posX += 30;
+        }
+        block.moveBy(posX / scale, (-workspace.scrollY + 30) / scale);
         block.scheduleSnapAndBump();
         Blockly.Events.setGroup(false);
-        mainWorkspace.refreshToolboxSelection_();
+        workspace.refreshToolboxSelection_();
       });
     });
 
@@ -211,6 +219,6 @@ function patchEditProcedureCallback(Blockly, onEdit) {
     assert(prototype.mutationToDom, "Prototype mutation to dom is required");
     assert(prototype.domToMutation, "Prototype dom to mutation is required");
     assert(prototype.getProcCode, "Prototype get proc code is required");
-    onEdit(/** @type {ProcedureBlock} */ (prototype));
+    onEdit(/** @type {ProcedureBlock} */(prototype));
   };
 }
