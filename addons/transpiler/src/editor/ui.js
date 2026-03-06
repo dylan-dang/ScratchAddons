@@ -32,7 +32,7 @@ export function patchMenuBar({ addon }) {
     state.transpiled = !state.transpiled;
   });
 
-  state.listen(async (transpiled) => {
+  state.listen((transpiled) => {
     if (transpiled) {
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
