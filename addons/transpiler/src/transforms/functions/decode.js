@@ -257,7 +257,10 @@ function transpileReturns(graph) {
     const stopBlock = block.getNext();
     assert(stopBlock, "Unexpected stack insertion block next block not found");
 
-    assert(stopBlock.opcode === "control_stop", `Unexpected stack insertion block has non-stop next block ${stopBlock.opcode}`);
+    assert(
+      stopBlock.opcode === "control_stop",
+      `Unexpected stack insertion block has non-stop next block ${stopBlock.opcode}`
+    );
 
     assert(
       stopBlock.getField("STOP_OPTION")?.value === "this script",

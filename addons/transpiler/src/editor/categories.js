@@ -1,5 +1,5 @@
-import { createXmlParser } from "./xml.js";
 import state from "../state.js";
+import { createXmlParser } from "./xml.js";
 
 /** @typedef {import("../userscript.js").FunctionContext} FunctionContext */
 
@@ -34,18 +34,24 @@ export function patchCategories(context, transforms) {
     .map((t) => t.category)
     .filter(/** @param {CategoryDefinition | undefined} def @returns {def is CategoryDefinition} */ (def) => !!def);
 
-  const categoryElements = categoryDefs.map(
-    (def) =>
-      xml`
-    <category
-    id="${def.id}"
-    name="${def.name}"
-    colour="${def.colour}"
-    secondaryColour="${def.secondaryColour}"
-    custom="${def.key}"
-    iconURI="${def.iconURI}"
-    />`
-  );
+  const categoryElements = categoryDefs
+    .map(
+      (def) =>
+        /** @type {[CategoryDefinition, Node]} */ ([
+          def,
+          xml`
+            <category
+              id="${def.id}"
+              name="${def.name}"
+              colour="${def.colour}"
+              secondaryColour="${def.secondaryColour}"
+              custom="${def.key}"
+              iconURI="${def.iconURI}"
+            />
+          `,
+        ])
+    )
+    .reverse();
 
   const oldUpdateToolbox = workspace.updateToolbox;
   /** @type {Parameters<typeof workspace.updateToolbox>[0] | null} */
@@ -58,9 +64,7 @@ export function patchCategories(context, transforms) {
     }
     if (!state.transpiled) {
       // Insert in reverse order so final order matches TRANSFORMS array
-      for (let i = categoryDefs.length - 1; i >= 0; i--) {
-        const def = categoryDefs[i];
-        const element = categoryElements[i];
+      for (const [def, element] of categoryElements) {
         parsedXml?.querySelector(`category[id="${def.insertAfter}"]`)?.after(element);
       }
     }

@@ -1,7 +1,6 @@
 import { assert } from "../../utils.js";
 import { FunctionBlockType } from "./shared.js";
 
-
 /**
  * @typedef {import("../../userscript.js").FunctionContext} FunctionContext
  */
@@ -47,7 +46,9 @@ export function patchConnection(Blockly) {
       superiorConn = target;
     }
 
-    const customBlockConn = /** @type {ScratchBlocks.Connection | undefined} */ ( /** @type {unknown} */ (blockA.getInput("custom_block")?.connection));
+    const customBlockConn = /** @type {ScratchBlocks.Connection | undefined} */ (
+      /** @type {unknown} */ (blockA.getInput("custom_block")?.connection)
+    );
     if (
       (blockA.type === FunctionBlockType.DEFINITION &&
         blockB.type !== FunctionBlockType.PROTOTYPE &&

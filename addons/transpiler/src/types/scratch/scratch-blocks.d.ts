@@ -20,7 +20,7 @@ declare namespace ScratchBlocks {
     CAN_CONNECT: number;
     canConnectWithReason_(target: Connection): number;
     sourceBlock_: Block;
-    offsetInBlock_: { x: number, y: number };
+    offsetInBlock_: { x: number; y: number };
     fieldRow: {
       getSvgRoot: () => SVGElement;
     };

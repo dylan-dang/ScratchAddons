@@ -33,7 +33,6 @@ export default async function ({ addon }) {
   patchSerialization(context);
   patchMenuBar(context);
 
-
   // patch first deserialization
   vm.once("targetsUpdate", () => {
     transpileTargets(vm);
@@ -55,5 +54,10 @@ export default async function ({ addon }) {
   });
   addon.self.addEventListener("reenabled", () => {
     state.transpiled = false;
+  });
+
+  setTimeout(() => {
+    vm.refreshWorkspace();
+    refreshToolbox(workspace);
   });
 }

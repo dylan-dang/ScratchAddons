@@ -1,4 +1,3 @@
-
 /**
  * Wrapper around ScratchVM.Block, mirroring RegisteredBlock from encode.
  * Use block.ref for raw access, block.getNext() / block.getParent() / block.getInput() for traversal.

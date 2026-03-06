@@ -184,12 +184,12 @@ function getAndReplaceCalls(block, graph, ctx = { counter: 1 }) {
   /** @type {RegisteredBlock[]} */
   const inputBlocks = argumentIds
     .map((argId) => block.inputs[argId])
-    .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
+    .filter(/** @returns {primitive is Serialized.Primitive} */ (primitive) => !!primitive)
     .map(([, input]) => {
       if (typeof input !== "string") return;
       return graph.getBlock(input);
     })
-    .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
+    .filter(/** @returns {block is NonNullable<typeof block>} */ (block) => !!block);
 
   return inputBlocks.flatMap((block) => getAndReplaceCalls(block, graph, ctx));
 }

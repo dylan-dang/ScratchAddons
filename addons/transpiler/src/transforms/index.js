@@ -17,7 +17,6 @@
 
 import { functionsTransform } from "./functions/index.js";
 
-
 /**
  * @typedef {Object} Transform
  * @property {string} id
