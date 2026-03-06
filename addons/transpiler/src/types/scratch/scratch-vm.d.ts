@@ -1101,10 +1101,8 @@ declare namespace ScratchVM {
     STOP_FOR_TARGET: [
       // Target whose scripts are being stopped
       Target,
-      (
-        // Optional thread exception to keep running
-        Thread | undefined
-      ),
+      // Optional thread exception to keep running
+      Thread | undefined,
     ];
 
     PROJECT_LOADED: [];
