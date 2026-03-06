@@ -16,12 +16,11 @@ declare namespace Userscript {
     vm: ScratchVM.VM;
   }
 
+  export type Modal = ReturnType<createEditorModal>;
+
   export interface Tab extends Omit<__Tab, "createModal"> {
     traps: Traps;
-    createModal(
-      title: string,
-      opts?: { isOpen?: boolean; useEditorClasses?: boolean; useSizesClass?: boolean }
-    ): ReturnType<createEditorModal>;
+    createModal(title: string, opts?: { isOpen?: boolean; useEditorClasses?: boolean; useSizesClass?: boolean }): Modal;
   }
 
   export interface Addon extends Omit<__Addon, "tab"> {

@@ -24,16 +24,16 @@ export function patchMenuBar({ addon }) {
     addon.tab.scratchClass("menu-bar_hoverable")
   );
   buildButton.role = "button";
-  buildButton.ariaPressed = state.transpiled ? "true" : "false";
+  buildButton.ariaPressed = state.build ? "true" : "false";
   const image = document.createElement("img");
   buildButton.appendChild(image);
   image.src = BUILD_ICON;
   buildButton.addEventListener("click", async () => {
-    state.transpiled = !state.transpiled;
+    state.build = !state.build;
   });
 
-  state.listen(async (transpiled) => {
-    if (transpiled) {
+  state.listen("build", (build) => {
+    if (build) {
       image.src = DEV_ICON;
       buildButton.ariaPressed = "true";
       return;

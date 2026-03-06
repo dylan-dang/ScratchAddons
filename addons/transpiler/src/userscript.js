@@ -13,6 +13,7 @@ import { TRANSFORMS } from "./transforms/index.js";
  * @property {Userscript.Addon} addon
  * @property {ScratchBlocks.Blockly} Blockly
  * @property {ScratchVM.VM} vm
+ * @property {ScratchBlocks.WorkspaceSvg} workspace
  */
 
 /** @param {Userscript.Utilities} utils */
@@ -20,8 +21,10 @@ export default async function ({ addon }) {
   const Blockly = await addon.tab.traps.getBlockly();
   await addon.tab.scratchClassReady();
   const vm = addon.tab.traps.vm;
+  const workspace = addon.tab.traps.getWorkspace();
+
   /** @type {FunctionContext} */
-  const context = { addon, Blockly, vm };
+  const context = { addon, Blockly, vm, workspace };
 
   patchCategories(context, TRANSFORMS);
 
@@ -39,9 +42,8 @@ export default async function ({ addon }) {
     refreshToolbox(workspace);
   });
 
-  const workspace = addon.tab.traps.getWorkspace();
-  state.listen(async (transpiled) => {
-    if (transpiled) {
+  state.listen("build", async (build) => {
+    if (build) {
       await rebuild(vm);
       return;
     }
@@ -50,10 +52,10 @@ export default async function ({ addon }) {
   });
 
   addon.self.addEventListener("disabled", () => {
-    state.transpiled = true;
+    state.build = true;
   });
   addon.self.addEventListener("reenabled", () => {
-    state.transpiled = false;
+    state.build = false;
   });
 
   vm.refreshWorkspace();
