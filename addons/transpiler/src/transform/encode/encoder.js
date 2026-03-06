@@ -1,38 +1,28 @@
+import { TRANSFORMS } from "../../transforms/index.js";
 import { validate } from "../validator.js";
 import { SerializedBlockGraph } from "./graph.js";
-import { TRANSFORMS } from "../../transforms/index.js";
 
 /** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
 
-class Encoder {
-  /**
-   * @param {{ Blockly: ScratchBlocks.Blockly, vm: object }} dependencies
-   */
-  constructor({ Blockly, vm }) {
-    this.Blockly = Blockly;
-    this.vm = vm;
+/**
+ * @param {ScratchBlocks.Blockly} Blockly
+ * @param {Serialized.Target} target
+ */
+export function transpileTarget(Blockly, target) {
+  const graph = new SerializedBlockGraph({
+    Blockly,
+    target,
+  });
+  for (const transform of TRANSFORMS) {
+    transform.encode(graph);
   }
-
-  /**
-   * @param {Serialized.Target} target
-   */
-  transpileTarget(target) {
-    const graph = new SerializedBlockGraph({
-      Blockly: this.Blockly,
-      target,
-    });
-    for (const transform of TRANSFORMS) {
-      transform.encode(graph);
-    }
-    for (const error of validate(graph.blocks)) {
-      console.warn("Encoding graph validation error: ", error);
-    }
+  for (const error of validate(graph.blocks)) {
+    console.warn("Encoding graph validation error: ", error);
   }
 }
 
 /** @param {FunctionContext} context */
 export function patchSerialization({ Blockly, vm }) {
-  const transpiler = new Encoder({ Blockly, vm });
   const vmPrototype = Object.getPrototypeOf(vm);
   const originalToJSON = vmPrototype.toJSON;
   /**
@@ -45,7 +35,7 @@ export function patchSerialization({ Blockly, vm }) {
     try {
       const targets = "blocks" in parsed ? [parsed] : parsed.targets;
       for (const target of targets) {
-        transpiler.transpileTarget(target);
+        transpileTarget(Blockly, target);
       }
     } catch (error) {
       console.error("Error serializing project with transpiler: ", error);

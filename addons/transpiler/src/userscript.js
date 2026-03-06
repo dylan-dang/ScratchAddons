@@ -4,7 +4,7 @@
 import { patchCategories } from "./editor/categories.js";
 import { patchMenuBar, refreshToolbox } from "./editor/ui.js";
 import state from "./state.js";
-import { patchDeserialization } from "./transform/decode/decoder.js";
+import { patchFirstDeserialization, transpileTargets } from "./transform/decode/decoder.js";
 import { patchSerialization, rebuild } from "./transform/encode/encoder.js";
 import { TRANSFORMS } from "./transforms/index.js";
 
@@ -35,7 +35,7 @@ export default async function ({ addon }) {
   }
 
   patchSerialization(context);
-  const transformer = patchDeserialization(context);
+  patchFirstDeserialization(context);
   patchMenuBar(context);
 
   for (const transform of TRANSFORMS) {
@@ -48,7 +48,7 @@ export default async function ({ addon }) {
       await rebuild(vm);
       return;
     }
-    transformer.transpileTargets();
+    transpileTargets(vm);
     refreshToolbox(workspace);
   });
 
