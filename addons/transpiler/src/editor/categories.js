@@ -63,8 +63,6 @@ export function patchCategories(context, transforms) {
   };
 
   for (const def of categoryDefs) {
-    // Node | Node[] is compatible with Blockly's flyout content at runtime
-    // @ts-expect-error Blockly's FlyoutDefinition type doesn't include Node
     workspace.registerToolboxCategoryCallback(def.key, def.getContent(context));
   }
 }
