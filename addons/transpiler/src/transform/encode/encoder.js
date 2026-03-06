@@ -209,12 +209,12 @@ class Encoder {
     /** @type {RegisteredBlock[]} */
     const inputBlocks = argumentIds
       .map((argId) => block.ref.inputs[argId])
-      .filter(/** @returns {primitive is Serialized.Primitive} */(primitive) => !!primitive)
+      .filter(/** @returns {primitive is Serialized.Primitive} */ (primitive) => !!primitive)
       .map(([, input]) => {
         if (typeof input !== "string") return;
         return graph.getBlock(input);
       })
-      .filter(/** @returns {block is NonNullable<typeof block>} */(block) => !!block);
+      .filter(/** @returns {block is NonNullable<typeof block>} */ (block) => !!block);
 
     return inputBlocks.flatMap((block) => this.getAndReplaceCalls(block, graph, ctx));
   }

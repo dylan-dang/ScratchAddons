@@ -41,7 +41,7 @@ export default async function ({ addon }) {
     }
     transformer.transpileTargets();
     refreshToolbox(workspace);
-  })
+  });
 
   addon.self.addEventListener("disabled", () => {
     state.transpiled = true;
