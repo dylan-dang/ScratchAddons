@@ -44,10 +44,10 @@ export default async function ({ addon }) {
   })
 
   addon.self.addEventListener("disabled", () => {
-    state.transpiled = false;
+    state.transpiled = true;
   });
   addon.self.addEventListener("reenabled", () => {
-    state.transpiled = true;
+    state.transpiled = false;
   });
 
   vm.refreshWorkspace();
