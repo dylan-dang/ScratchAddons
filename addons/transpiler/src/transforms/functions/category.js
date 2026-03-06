@@ -85,6 +85,7 @@ export const functionsCategory = {
 
       modal.open(mutation, (mutation) => {
         if (!mutation) return;
+        if (mutation.getAttribute("proccode")?.trim().length === 0) return;
         const blockDom = xml`
         <block type="${FunctionBlockType.DEFINITION}">
           <value name="custom_block">
@@ -116,6 +117,7 @@ export const functionsCategory = {
     patchEditProcedureCallback(Blockly, (prototype) => {
       modal.open(prototype.mutationToDom(), (mutation) => {
         if (!mutation) return;
+        if (mutation.getAttribute("proccode")?.trim().length === 0) return;
         Blockly.Events.setGroup(true);
         const callers = [...getCallers(prototype.getProcCode(), workspace), prototype];
         for (const caller of callers) {
