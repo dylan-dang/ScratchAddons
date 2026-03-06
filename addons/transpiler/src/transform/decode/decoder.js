@@ -39,11 +39,3 @@ export function transpileTargets(vm) {
     vm.loadProject(snapshot);
   }
 }
-
-/** @param {FunctionContext} context */
-export function patchFirstDeserialization(context) {
-  const { vm } = context;
-  vm.once("targetsUpdate", () => {
-    transpileTargets(vm);
-  });
-}

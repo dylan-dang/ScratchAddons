@@ -1,37 +1,59 @@
+import { assert } from "../../utils.js";
 import { FunctionBlockType } from "./shared.js";
+
 
 /**
  * @typedef {import("../../userscript.js").FunctionContext} FunctionContext
  */
 
+/** @param {ScratchBlocks.Blockly} Blockly */
+export function patchBlocks(Blockly) {
+  patchConnection(Blockly);
+  patchBlockDragger(Blockly);
+  patchBlockSvg(Blockly);
+  defineBlocks(Blockly);
+}
+
 /**
  * Patch the connection to handle function block connection.
- * @param {FunctionContext} context
+ * @param {ScratchBlocks.Blockly} Blockly
  */
-export function patchConnection({ Blockly }) {
-  const ConnectionPrototype = Object.getPrototypeOf(Blockly.Connection);
+export function patchConnection(Blockly) {
+  const ConnectionPrototype = Blockly.Connection.prototype;
 
-  /** @type {ScratchBlocks.Connection["canConnectWithReason_"]} */
   const originalCanConnectWithReason_ = ConnectionPrototype.canConnectWithReason_;
 
-  /** @type {ScratchBlocks.Connection["canConnectWithReason_"]} */
+  /**
+   * @this {ScratchBlocks.Connection}
+   * @type {ScratchBlocks.Connection["canConnectWithReason_"]}
+   */
   ConnectionPrototype.canConnectWithReason_ = function (target) {
-    const connection = /** @type {ScratchBlocks.Connection} */ (/** @type {unknown} */ (this));
     const reason = originalCanConnectWithReason_.call(this, target);
     if (reason !== Blockly.Connection.CAN_CONNECT) return reason;
 
-    const superior = connection.isSuperior();
-    const blockA = superior ? connection.sourceBlock_ : target.getSourceBlock();
-    const blockB = superior ? target.getSourceBlock() : connection.sourceBlock_;
-    const superiorConn = superior ? this : target;
+    /** @type {ScratchBlocks.Block} */
+    let blockA;
+    /** @type {ScratchBlocks.Block} */
+    let blockB;
+    /** @type {ScratchBlocks.Connection} */
+    let superiorConn;
+    if (this.isSuperior()) {
+      blockA = this.sourceBlock_;
+      blockB = target.getSourceBlock();
+      superiorConn = this;
+    } else {
+      blockA = target.getSourceBlock();
+      blockB = this.sourceBlock_;
+      superiorConn = target;
+    }
 
+    const customBlockConn = /** @type {ScratchBlocks.Connection | undefined} */ ( /** @type {unknown} */ (blockA.getInput("custom_block")?.connection));
     if (
       (blockA.type === FunctionBlockType.DEFINITION &&
         blockB.type !== FunctionBlockType.PROTOTYPE &&
-        superiorConn === blockA.getInput("custom_block")?.connection) ||
+        superiorConn === customBlockConn) ||
       (blockB.type === FunctionBlockType.PROTOTYPE && blockA.type !== FunctionBlockType.DEFINITION)
     ) {
-      // @ts-ignore
       return Blockly.Connection.REASON_CUSTOM_PROCEDURE;
     }
 
@@ -41,9 +63,9 @@ export function patchConnection({ Blockly }) {
 
 /**
  * Patch the block dragger to handle function block deletion.
- * @param {FunctionContext} context
+ * @param {ScratchBlocks.Blockly} Blockly
  */
-export function patchBlockDragger({ Blockly }) {
+export function patchBlockDragger(Blockly) {
   const oldEndBlockDrag = Blockly.BlockDragger.prototype.endBlockDrag;
   Blockly.BlockDragger.prototype.endBlockDrag = function (/** @type {any} */ ...args) {
     oldEndBlockDrag.apply(this, args);
@@ -79,8 +101,10 @@ export function patchBlockDragger({ Blockly }) {
   };
 }
 
-/** @param {FunctionContext} context */
-export function patchBlockSvg({ Blockly }) {
+/**
+ * @param {ScratchBlocks.Blockly} Blockly
+ */
+export function patchBlockSvg(Blockly) {
   const originalRenderDrawTop_ = Blockly.BlockSvg.prototype.renderDrawTop_;
   /**
    * Render the top edge of the block.
@@ -98,6 +122,22 @@ export function patchBlockSvg({ Blockly }) {
     originalRenderDrawTop_.call(this, steps, rightEdge);
   };
 
+  const originalRenderFields = Blockly.BlockSvg.prototype.renderFields_;
+  /**
+   * Render the fields of the block.
+   * @param {ScratchBlocks.Field[]} fieldRow The fields to render.
+   * @param {number} fieldX The x position of the fields.
+   * @param {number} fieldY The y position of the fields.
+   * @return {number} The x position of the fields.
+   */
+  Blockly.BlockSvg.prototype.renderFields_ = function (fieldRow, fieldX, fieldY) {
+    if (this.type === FunctionBlockType.DEFINITION) {
+      // move define text field up by 2 units
+      fieldY -= 2 * Blockly.BlockSvg.GRID_UNIT;
+    }
+    return originalRenderFields.call(this, fieldRow, fieldX, fieldY);
+  };
+
   const originalRenderDrawRight_ = Blockly.BlockSvg.prototype.renderDrawRight_;
   /**
    * Render the right edge of the block.
@@ -109,117 +149,31 @@ export function patchBlockSvg({ Blockly }) {
    * @private
    */
   Blockly.BlockSvg.prototype.renderDrawRight_ = function (steps, inputRows, iconWidth) {
-    // almost an exact copy of original renderDrawRight_ except for fieldY and connectionY subtraction 12 and radius change
-    if (this.type === FunctionBlockType.DEFINITION) {
-      let cursorX = 0;
-      let cursorY = -4;
-      inputRows.forEach((row, y) => {
-        cursorX = row.paddingStart;
-        if (y === 0) {
-          cursorX += this.RTL ? -iconWidth : iconWidth;
-        }
-
-        if (row.type === Blockly.BlockSvg.INLINE) {
-          // Inline inputs.
-          for (const input of row) {
-            // Align fields vertically within the row.
-            // Moves the field to half of the row's height.
-            // In renderFields_, the field is further centered
-            // by its own rendered height.
-            const fieldY = cursorY + row.height / 2 - 8;
-            const fieldX = Blockly.BlockSvg.getAlignedCursor_(cursorX, input, inputRows.rightEdge);
-
-            cursorX = this.renderFields_(input.fieldRow, fieldX, fieldY);
-            if (input.type === Blockly.INPUT_VALUE) {
-              // Create inline input connection.
-              // In blocks with a notch, inputs should be bumped to a min X,
-              // to avoid overlapping with the notch.
-              if (this.previousConnection) {
-                cursorX = Math.max(cursorX, Blockly.BlockSvg.INPUT_AND_FIELD_MIN_X);
-              }
-              const connectionX = this.RTL ? -cursorX : cursorX;
-              // Attempt to center the connection vertically.
-              const connectionYOffset = row.height / 2 - 8;
-              const connectionY = cursorY + connectionYOffset;
-              input.connection.setOffsetInBlock(connectionX, connectionY);
-              this.renderInputShape_(input, cursorX, cursorY + connectionYOffset);
-              cursorX += input.renderWidth + Blockly.BlockSvg.SEP_SPACE_X;
-            }
-          }
-          // Remove final separator and replace it with right-padding.
-          cursorX -= Blockly.BlockSvg.SEP_SPACE_X;
-          cursorX += row.paddingEnd;
-          // Update right edge for all inputs, such that all rows
-          // stretch to be at least the size of all previous rows.
-          inputRows.rightEdge = Math.max(cursorX, inputRows.rightEdge);
-          // Move to the right edge
-          cursorX = Math.max(cursorX, inputRows.rightEdge);
-          this.width = Math.max(this.width, cursorX);
-          if (!this.edgeShape_) {
-            // Include corner radius in drawing the horizontal line.
-            steps.push("H", cursorX - Blockly.BlockSvg.DEFINE_HAT_CORNER_RADIUS - this.edgeShapeWidth_);
-            steps.push(Blockly.BlockSvg.TOP_RIGHT_CORNER_DEFINE_HAT);
-          } else {
-            // Don't include corner radius - no corner (edge shape drawn).
-            steps.push("H", cursorX - this.edgeShapeWidth_);
-          }
-          // Subtract CORNER_RADIUS * 2 to account for the top right corner
-          // and also the bottom right corner. Only move vertically the non-corner length.
-          if (!this.edgeShape_) {
-            steps.push("v", row.height - Blockly.BlockSvg.CORNER_RADIUS * 2);
-          }
-        } else if (row.type === Blockly.NEXT_STATEMENT) {
-          // Nested statement.
-          const [input] = row;
-          const fieldX = cursorX;
-          // Align fields vertically within the row.
-          // In renderFields_, the field is further centered by its own height.
-          const fieldY = cursorY + Blockly.BlockSvg.MIN_STATEMENT_INPUT_HEIGHT;
-          this.renderFields_(input.fieldRow, fieldX, fieldY);
-          // Move to the start of the notch.
-          cursorX = inputRows.statementEdge + Blockly.BlockSvg.NOTCH_WIDTH;
-
-          if (this.type === Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) {
-            this.renderDefineBlock_(steps, inputRows, input, row, cursorY);
-          } else {
-            Blockly.BlockSvg.drawStatementInputFromTopRight_(steps, cursorX, inputRows.rightEdge, row);
-          }
-
-          // Create statement connection.
-          const connectionX = this.RTL ? -cursorX : cursorX;
-          input.connection.setOffsetInBlock(connectionX, cursorY);
-          if (input.connection.isConnected()) {
-            this.width = Math.max(
-              this.width,
-              inputRows.statementEdge + input.connection.targetBlock().getHeightWidth().width
-            );
-          }
-          if (
-            this.type !== Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE &&
-            (y === inputRows.length - 1 || inputRows[y + 1].type === Blockly.NEXT_STATEMENT)
-          ) {
-            // If the final input is a statement stack, add a small row underneath.
-            // Consecutive statement stacks are also separated by a small divider.
-            steps.push(Blockly.BlockSvg.TOP_RIGHT_CORNER);
-            steps.push("v", Blockly.BlockSvg.EXTRA_STATEMENT_ROW_Y - 2 * Blockly.BlockSvg.CORNER_RADIUS);
-            cursorY += Blockly.BlockSvg.EXTRA_STATEMENT_ROW_Y;
-          }
-        }
-        cursorY += row.height;
-      });
-      this.drawEdgeShapeRight_(steps);
-      if (!inputRows.length) {
-        cursorY = Blockly.BlockSvg.MIN_BLOCK_Y;
-        steps.push("V", cursorY);
-      }
-      return cursorY;
+    if (this.type === FunctionBlockType.CALL) {
+      // remove 2 units from the padding end of the last input row
+      inputRows[inputRows.length - 1].paddingEnd -= 2 * Blockly.BlockSvg.GRID_UNIT;
     }
-    return originalRenderDrawRight_.call(this, steps, inputRows, iconWidth);
+    const returnValue = originalRenderDrawRight_.call(this, steps, inputRows, iconWidth);
+    if (this.type === FunctionBlockType.DEFINITION) {
+      const connection = inputRows[0][0].connection;
+      // move the prototype connection up by 2 units
+      connection.offsetInBlock_.y -= 2 * Blockly.BlockSvg.GRID_UNIT;
+      // change top right corner to define hat corner and shift to the left by the difference in corner radii
+      assert(typeof steps[3] === "number");
+      steps[3] -= Blockly.BlockSvg.DEFINE_HAT_CORNER_RADIUS - Blockly.BlockSvg.CORNER_RADIUS;
+      steps[4] = Blockly.BlockSvg.TOP_RIGHT_CORNER_DEFINE_HAT;
+      // increase bottom edge by 1 unit to line up with next block
+      assert(typeof steps[6] === "number");
+      steps[6] += Blockly.BlockSvg.GRID_UNIT;
+    }
+    return returnValue;
   };
 }
 
-/** @param {FunctionContext} context */
-export function defineBlocks({ Blockly }) {
+/**
+ * @param {ScratchBlocks.Blockly} Blockly
+ */
+export function defineBlocks(Blockly) {
   Blockly.Blocks[FunctionBlockType.RETURN] = {
     init() {
       this.jsonInit({

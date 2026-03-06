@@ -1,5 +1,5 @@
-import { FunctionBlockType } from "./shared.js";
 import { assert, rebindOnce } from "../../utils.js";
+import { FunctionBlockType } from "./shared.js";
 
 /** @typedef {import("../../userscript.js").FunctionContext} FunctionContext */
 
@@ -131,7 +131,7 @@ function getFunctionParamNamesIdsAndDefaults(blocks, proccode) {
  */
 function patchBlockExecuteCache(blocks) {
   // Wrap block functions as they're first read from the execute cache.
-  blocks._cache._executeCached = new Proxy(/** @type {Record<string | symbol, BlockExecuteCache>} */ ({}), {
+  blocks._cache._executeCached = new Proxy(/** @type {Record<string | symbol, BlockExecuteCache>} */({}), {
     set(target, prop, value, receiver) {
       if (!value || value[PATCHED] || typeof value._blockFunction !== "function") {
         return Reflect.set(target, prop, value, receiver);
@@ -163,8 +163,8 @@ function patchBlockExecuteCache(blocks) {
   });
 }
 
-/** @param {FunctionContext} context */
-export function patchVM({ vm }) {
+/** @param {ScratchVM.VM} vm */
+export function patchVM(vm) {
   /** @type {ScratchVM.Sequencer["stepThread"]} */
   const originalStepThread = vm.runtime.sequencer.stepThread;
   /** @type {ScratchVM.Sequencer["stepThread"]} */

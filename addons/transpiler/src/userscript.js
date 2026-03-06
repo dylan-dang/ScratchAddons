@@ -4,7 +4,7 @@
 import { patchCategories } from "./editor/categories.js";
 import { patchMenuBar, refreshToolbox } from "./editor/ui.js";
 import state from "./state.js";
-import { patchFirstDeserialization, transpileTargets } from "./transform/decode/decoder.js";
+import { transpileTargets } from "./transform/decode/decoder.js";
 import { patchSerialization, rebuild } from "./transform/encode/encoder.js";
 import { TRANSFORMS } from "./transforms/index.js";
 
@@ -26,21 +26,19 @@ export default async function ({ addon }) {
   patchCategories(context, TRANSFORMS);
 
   for (const transform of TRANSFORMS) {
-    if (transform.blocks) {
-      transform.blocks.defineBlocks(context);
-      if (transform.blocks.patchConnection) transform.blocks.patchConnection(context);
-      if (transform.blocks.patchBlockSvg) transform.blocks.patchBlockSvg(context);
-      if (transform.blocks.patchBlockDragger) transform.blocks.patchBlockDragger(context);
-    }
+    transform.patchBlocks?.(Blockly);
+    transform.patchVM?.(vm);
   }
 
   patchSerialization(context);
-  patchFirstDeserialization(context);
   patchMenuBar(context);
 
-  for (const transform of TRANSFORMS) {
-    if (transform.vm) transform.vm.patch(context);
-  }
+
+  // patch first deserialization
+  vm.once("targetsUpdate", () => {
+    transpileTargets(vm);
+    vm.refreshWorkspace();
+  });
 
   const workspace = addon.tab.traps.getWorkspace();
   state.listen(async (transpiled) => {
@@ -58,6 +56,4 @@ export default async function ({ addon }) {
   addon.self.addEventListener("reenabled", () => {
     state.transpiled = false;
   });
-
-  vm.refreshWorkspace();
 }

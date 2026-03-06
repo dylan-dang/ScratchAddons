@@ -9,22 +9,18 @@
  * - decode: (target) => void - load → custom blocks
  */
 
+import { patchBlocks } from "./blocks.js";
 import { functionsCategory } from "./category.js";
-import { defineBlocks, patchBlockDragger, patchBlockSvg, patchConnection } from "./blocks.js";
-import { patchVM } from "./vm.js";
-import { encode } from "./encode.js";
 import { decode } from "./decode.js";
+import { encode } from "./encode.js";
+import { patchVM } from "./vm.js";
 
+/** @type {import("../index.js").Transform} */
 export const functionsTransform = {
   id: "functions",
   category: functionsCategory,
-  blocks: {
-    defineBlocks,
-    patchConnection,
-    patchBlockSvg,
-    patchBlockDragger,
-  },
-  vm: { patch: patchVM },
+  patchBlocks,
+  patchVM,
   encode,
   decode,
 };

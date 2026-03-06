@@ -22,8 +22,8 @@ import { functionsTransform } from "./functions/index.js";
  * @typedef {Object} Transform
  * @property {string} id
  * @property {import("../editor/categories.js").CategoryDefinition} [category]
- * @property {{ defineBlocks: Function, patchConnection?: Function, patchBlockSvg?: Function, patchBlockDragger?: Function }} [blocks]
- * @property {{ patch: (context: import("../userscript.js").FunctionContext) => void }} [vm]
+ * @property {(Blockly: ScratchBlocks.Blockly) => void} [patchBlocks]
+ * @property {(vm: ScratchVM.VM) => void} [patchVM]
  * @property {(graph: import("../transform/encode/graph.js").SerializedBlockGraph) => void} encode
  * @property {(graph: import("../transform/decode/graph.js").RuntimeBlockGraph) => void} decode
  */

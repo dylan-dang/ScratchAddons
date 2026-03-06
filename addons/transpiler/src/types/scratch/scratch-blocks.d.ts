@@ -20,6 +20,12 @@ declare namespace ScratchBlocks {
     CAN_CONNECT: number;
     canConnectWithReason_(target: Connection): number;
     sourceBlock_: Block;
+    offsetInBlock_: { x: number, y: number };
+    fieldRow: {
+      getSvgRoot: () => SVGElement;
+    };
+    REASON_CUSTOM_PROCEDURE: number;
+    prototype: Connection;
   };
   export type Input = Omit<import("blockly/core").Input, "connection"> & {
     connection: Connection;

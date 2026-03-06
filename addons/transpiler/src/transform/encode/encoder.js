@@ -21,6 +21,16 @@ export function transpileTarget(Blockly, target) {
   }
 }
 
+/**
+ * @param {ScratchBlocks.Blockly} Blockly
+ * @param {Serialized.Target[]} targets
+ */
+export function transpileTargets(Blockly, targets) {
+  for (const target of targets) {
+    transpileTarget(Blockly, target);
+  }
+}
+
 /** @param {FunctionContext} context */
 export function patchSerialization({ Blockly, vm }) {
   const vmPrototype = Object.getPrototypeOf(vm);
@@ -32,11 +42,9 @@ export function patchSerialization({ Blockly, vm }) {
     const json = originalToJSON.call(this, optTargetId);
     /** @type {Serialized.Project | Serialized.Sprite} */
     const parsed = JSON.parse(json);
+    const targets = "blocks" in parsed ? [parsed] : parsed.targets;
     try {
-      const targets = "blocks" in parsed ? [parsed] : parsed.targets;
-      for (const target of targets) {
-        transpileTarget(Blockly, target);
-      }
+      transpileTargets(Blockly, targets);
     } catch (error) {
       console.error("Error serializing project with transpiler: ", error);
       return json;
