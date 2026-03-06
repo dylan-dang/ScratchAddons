@@ -14,6 +14,7 @@ import { TRANSFORMS } from "./transforms/index.js";
  * @property {ScratchBlocks.Blockly} Blockly
  * @property {ScratchVM.VM} vm
  * @property {ScratchBlocks.WorkspaceSvg} workspace
+ * @property {ScratchBlocks.WorkspaceSvg} workspace
  */
 
 /** @param {Userscript.Utilities} utils */
@@ -52,10 +53,10 @@ export default async function ({ addon }) {
   });
 
   addon.self.addEventListener("disabled", () => {
-    state.transpiled = true;
+    state.build = true;
   });
   addon.self.addEventListener("reenabled", () => {
-    state.transpiled = false;
+    state.build = false;
   });
 
   vm.refreshWorkspace();
