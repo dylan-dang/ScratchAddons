@@ -29,14 +29,14 @@ export function patchCategories(context, transforms) {
 
   const categoryDefs = transforms
     .map((t) => t.category)
-    .filter(/** @param {CategoryDefinition | undefined} def @returns {def is CategoryDefinition} */(def) => !!def);
+    .filter(/** @param {CategoryDefinition | undefined} def @returns {def is CategoryDefinition} */ (def) => !!def);
 
   const categoryElements = categoryDefs
     .map(
       (def) =>
-        /** @type {[CategoryDefinition, Node]} */([
-        def,
-        xml`
+        /** @type {[CategoryDefinition, Node]} */ ([
+          def,
+          xml`
             <category
               id="${def.id}"
               name="${def.name}"
@@ -46,7 +46,7 @@ export function patchCategories(context, transforms) {
               iconURI="${def.iconURI}"
             />
           `,
-      ])
+        ])
     )
     .reverse();
 

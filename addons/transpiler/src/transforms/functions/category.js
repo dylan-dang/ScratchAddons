@@ -21,15 +21,15 @@ const CALLBACK_KEY = "CREATE_FUNCTION";
 function buildFunctionCalls(workspace, Blockly) {
   return workspace
     .getAllBlocks()
-    .filter(/** @param {ScratchBlocks.BlockSvg} block */(block) => block.type === FunctionBlockType.PROTOTYPE)
-    .map(/** @param {ScratchBlocks.BlockSvg} block */(block) => block.mutationToDom?.(/* opt_generateShadows */ true))
+    .filter(/** @param {ScratchBlocks.BlockSvg} block */ (block) => block.type === FunctionBlockType.PROTOTYPE)
+    .map(/** @param {ScratchBlocks.BlockSvg} block */ (block) => block.mutationToDom?.(/* opt_generateShadows */ true))
     .filter(Boolean)
     .sort(
-      /** @param {Element} a @param {Element} b */(a, b) =>
+      /** @param {Element} a @param {Element} b */ (a, b) =>
         Blockly.scratchBlocksUtils.compareStrings(a.getAttribute("proccode"), b.getAttribute("proccode"))
     )
     .map(
-      /** @param {Element} mutation */(mutation) => {
+      /** @param {Element} mutation */ (mutation) => {
         const block = document.createElementNS(null, "block");
         block.setAttribute("type", FunctionBlockType.CALL);
         block.setAttribute("gap", "16");
@@ -46,15 +46,15 @@ function buildToolboxContent(xml, calls) {
     calls,
     calls.length > 0
       ? [
-        xml`<sep gap="36" />`,
-        xml`<block type="${FunctionBlockType.RETURN}">
+          xml`<sep gap="36" />`,
+          xml`<block type="${FunctionBlockType.RETURN}">
                 <value name="ITEM">
                   <shadow type="text">
                     <field name="TEXT" />
                   </shadow>
                 </value>
               </block>`,
-      ]
+        ]
       : [],
   ].flat();
 }
@@ -222,6 +222,6 @@ function patchEditProcedureCallback(Blockly, onEdit) {
     assert(prototype.mutationToDom, "Prototype mutation to dom is required");
     assert(prototype.domToMutation, "Prototype dom to mutation is required");
     assert(prototype.getProcCode, "Prototype get proc code is required");
-    onEdit(/** @type {ProcedureBlock} */(prototype));
+    onEdit(/** @type {ProcedureBlock} */ (prototype));
   };
 }
