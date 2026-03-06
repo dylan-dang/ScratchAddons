@@ -4,7 +4,7 @@ import { assert, rebindOnce } from "./utils.js";
 /** @typedef {import("./userscript.js").FunctionContext} FunctionContext */
 
 /** Symbol to mark blocks we've already patched (avoid double-wrapping) */
-const PATCHED = Symbol("scratch-functions-patch");
+const PATCHED = Symbol("sa-transpiler-patched");
 
 /** @enum {number} */
 const Thread = /** @type {const} */ ({
@@ -131,7 +131,7 @@ function getFunctionParamNamesIdsAndDefaults(blocks, proccode) {
  */
 function patchBlockExecuteCache(blocks) {
   // Wrap block functions as they're first read from the execute cache.
-  blocks._cache._executeCached = new Proxy(/** @type {Record<string | symbol, BlockExecuteCache>} */ ({}), {
+  blocks._cache._executeCached = new Proxy(/** @type {Record<string | symbol, BlockExecuteCache>} */({}), {
     set(target, prop, value, receiver) {
       if (!value || value[PATCHED] || typeof value._blockFunction !== "function") {
         return Reflect.set(target, prop, value, receiver);

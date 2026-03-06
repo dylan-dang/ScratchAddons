@@ -30,7 +30,7 @@ export default async function ({ addon }) {
   patchBlockDragger(context);
   patchSerialization(context);
   const transformer = patchDeserialization(context);
-  patchMenuBar(context, transformer);
+  patchMenuBar(context);
   patchVM(context);
 
   const workspace = addon.tab.traps.getWorkspace();

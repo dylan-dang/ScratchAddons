@@ -271,11 +271,8 @@ export function refreshToolbox(workspace) {
 
 /**
  * @param {FunctionContext} context
- * @param {Decoder} transformer
  */
-export function patchMenuBar({ addon, vm }, transformer) {
-  const workspace = addon.tab.traps.getWorkspace();
-
+export function patchMenuBar({ addon }) {
   const fileGroup = document.querySelector(`.${addon.tab.scratchClass("menu-bar_file-group")}`);
   assert(fileGroup, "File group not found");
   const buildButton = document.createElement("div");
